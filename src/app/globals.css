@@ -1,0 +1,122 @@
+@import "./fonts.css";
+@import "tailwindcss";
+
+@theme {
+  --color-rh-black: #000000;
+  --color-rh-surface: #000000;
+  --color-rh-eternity: #1c180d;
+  --color-rh-raised: #141414;
+  --color-rh-border: #2a2a2a;
+  --color-rh-ink: #ffffff;
+  --color-rh-muted: #9a9590;
+  --color-rh-dim: #4d4a46;
+  --color-rh-lime: #ccff00;
+  --color-rh-lime-hover: #b8e600;
+  --color-rh-on-lime: #110e08;
+  --color-lime: #ccff00;
+  --color-eternity: #1c180d;
+  --color-eternity-light: #000000;
+  --color-eternity-lighter: #141414;
+  --color-cyan: #5ce1ff;
+  --font-display: "Martina Plantijn", "Times New Roman", serif;
+  --font-sans: "Capsule Sans Text", ui-sans-serif, system-ui, sans-serif;
+}
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    background: #000;
+    color: #fff;
+    font-family: "Capsule Sans Text", ui-sans-serif, system-ui, sans-serif;
+    font-weight: 400;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  ::selection {
+    background: #ccff00;
+    color: #110e08;
+  }
+}
+
+@layer components {
+  .rh-display {
+    font-family: "Martina Plantijn", "Times New Roman", serif;
+    font-weight: 400;
+    letter-spacing: -0.02em;
+    line-height: 1.05;
+  }
+
+  .rh-pill {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 9999px;
+    font-family: "Capsule Sans Text", sans-serif;
+    font-weight: 500;
+    font-size: 0.9375rem;
+    line-height: 1;
+    transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+  }
+
+  .rh-container {
+    width: 100%;
+    max-width: 72rem;
+    margin-inline: auto;
+    padding-inline: 1.25rem;
+  }
+
+  @media (min-width: 640px) {
+    .rh-container {
+      padding-inline: 2rem;
+    }
+  }
+
+  .rh-muted {
+    color: #9a9590;
+  }
+}
+
+[data-rk] {
+  --rk-colors-accentColor: #ccff00;
+  --rk-colors-accentColorForeground: #110e08;
+  --rk-colors-modalBackground: #000000;
+  --rk-colors-modalBorder: #2a2a2a;
+  --rk-colors-profileForeground: #ffffff;
+  --rk-colors-connectButtonBackground: #141414;
+  --rk-colors-connectButtonText: #ffffff;
+}
+
+/* Keep wheel/trackpad scroll inside RainbowKit modals (Lenis otherwise scrolls the page) */
+[data-rk] [role="dialog"],
+[data-rk] [aria-modal="true"] {
+  overscroll-behavior: contain;
+}
+
+::-webkit-scrollbar {
+  width: 4px;
+}
+::-webkit-scrollbar-track {
+  background: #000;
+}
+::-webkit-scrollbar-thumb {
+  background: #322f2f;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #ccff00;
+}
+
+.glass {
+  background: #000;
+  border: 1px solid #141414;
+}
+.glow-lime,
+.glow-border {
+  box-shadow: none;
+}
+.text-gradient {
+  color: #fff;
+  background: none;
+}

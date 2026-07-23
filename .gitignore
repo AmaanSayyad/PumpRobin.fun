@@ -1,0 +1,18 @@
+node_modules/
+.next/
+artifacts/
+cache/
+.env
+.env.local
+.env*.local
+.vercel/
+.agents/
+*.tsbuildinfo
+PumpRobin.fun.code-workspace
+.DS_Store
+
+# Foundry / Hardhat local artifacts & deps (install via forge install)
+out/
+cache/
+lib/
+broadcast/
