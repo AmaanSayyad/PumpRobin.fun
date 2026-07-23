@@ -6,7 +6,9 @@ import "./BondingCurve.sol";
 
 /**
  * @title PumpRobinFactory
- * @notice Factory contract for creating tokens with bonding curves on Robinhood Chain
+ * @notice Factory for tokens + bonding curves on Robinhood Chain.
+ * @dev Matches Bags createAndBuy: send creation fee + optional buy ETH in one tx.
+ *      Excess over CREATION_FEE buys on the new curve for the creator.
  */
 contract PumpRobinFactory {
     uint256 public constant CREATION_FEE = 0.0005 ether;
@@ -79,13 +81,15 @@ contract PumpRobinFactory {
 
         emit TokenCreated(token, bondingCurve, msg.sender, name, symbol, imageUri);
 
-        // Forward creation fee to collector; refund any excess to creator
+        // Forward creation fee to collector
         (bool feeSent, ) = feeCollector.call{value: CREATION_FEE}("");
         require(feeSent, "Fee transfer failed");
 
-        if (msg.value > CREATION_FEE) {
-            (bool sent, ) = msg.sender.call{value: msg.value - CREATION_FEE}("");
-            require(sent, "Refund failed");
+        // Bags-style createAndBuy: any ETH above the creation fee buys on the curve
+        // for the creator in the same transaction (no second wallet confirm).
+        uint256 buyEth = msg.value - CREATION_FEE;
+        if (buyEth > 0) {
+            curve.buyFor{value: buyEth}(msg.sender, 0);
         }
     }
 

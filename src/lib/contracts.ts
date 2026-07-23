@@ -80,6 +80,16 @@ export const BONDING_CURVE_ABI = [
   },
   {
     type: "function",
+    name: "buyFor",
+    inputs: [
+      { name: "recipient", type: "address" },
+      { name: "minTokens", type: "uint256" },
+    ],
+    outputs: [],
+    stateMutability: "payable",
+  },
+  {
+    type: "function",
     name: "sell",
     inputs: [
       { name: "tokenAmount", type: "uint256" },
@@ -119,6 +129,13 @@ export const BONDING_CURVE_ABI = [
   {
     type: "function",
     name: "realEthReserves",
+    inputs: [],
+    outputs: [{ name: "", type: "uint256" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "realTokenReserves",
     inputs: [],
     outputs: [{ name: "", type: "uint256" }],
     stateMutability: "view",
@@ -191,6 +208,16 @@ export const ERC20_ABI = [
     ],
     outputs: [{ name: "", type: "bool" }],
     stateMutability: "nonpayable",
+  },
+  {
+    type: "function",
+    name: "allowance",
+    inputs: [
+      { name: "owner", type: "address" },
+      { name: "spender", type: "address" },
+    ],
+    outputs: [{ name: "", type: "uint256" }],
+    stateMutability: "view",
   },
   {
     type: "function",

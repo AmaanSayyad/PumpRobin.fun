@@ -39,3 +39,43 @@ export function timeAgo(date: Date): string {
   if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
   return `${Math.floor(seconds / 86400)}d ago`;
 }
+
+/** Short, user-facing wallet / viem errors (hide huge dumps). */
+export function friendlyWalletError(err: unknown, fallback = "Something went wrong"): string {
+  const raw =
+    err instanceof Error
+      ? err.message
+      : typeof err === "string"
+        ? err
+        : fallback;
+  const lower = raw.toLowerCase();
+
+  if (
+    lower.includes("user rejected") ||
+    lower.includes("user denied") ||
+    lower.includes("rejected the request") ||
+    lower.includes("request rejected") ||
+    lower.includes("action_rejected")
+  ) {
+    return "Transaction cancelled in wallet.";
+  }
+  if (lower.includes("insufficient funds")) {
+    return "Insufficient ETH for this transaction + gas.";
+  }
+  if (lower.includes("0 tokens") || lower.includes("buy on the curve first")) {
+    return raw.length > 160 ? raw.slice(0, 160) : raw;
+  }
+  if (lower.includes("insufficient tokens")) {
+    return raw.length > 160 ? raw.slice(0, 160) : raw;
+  }
+  if (lower.includes("network") && lower.includes("chain")) {
+    return "Wrong network — switch to Robinhood Chain.";
+  }
+  if (lower.includes("slippage") || lower.includes("minTokens") || lower.includes("minEth")) {
+    return "Price moved — try again with a slightly higher amount.";
+  }
+
+  // First meaningful line only, capped
+  const line = raw.split("\n").map((l) => l.trim()).find(Boolean) || fallback;
+  return line.length > 140 ? `${line.slice(0, 140)}…` : line;
+}

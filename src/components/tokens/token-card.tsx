@@ -1,10 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import Image from "next/image";
 import { motion } from "framer-motion";
 import { cn, formatEth, timeAgo } from "@/lib/utils";
 import type { TokenData } from "@/lib/data";
+import { TokenLogo } from "@/components/token-logo";
 
 interface TokenCardProps {
   token: TokenData;
@@ -26,7 +26,11 @@ export function TokenCard({ token, index = 0 }: TokenCardProps) {
       >
         <div className="flex items-start gap-3">
           <div className="relative w-11 h-11 rounded-lg overflow-hidden bg-rh-raised shrink-0">
-            <Image src={token.imageUri} alt={token.name} fill className="object-cover" />
+            <TokenLogo
+              src={token.imageUri}
+              alt={token.name}
+              symbol={token.symbol}
+            />
           </div>
           <div className="flex-1 min-w-0">
             <div className="flex items-center justify-between gap-2">

@@ -2,6 +2,8 @@
 
 import { useMemo, useState, useEffect, useRef, type ReactNode } from "react";
 import Image from "next/image";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   useAccount,
   useBalance,
@@ -11,7 +13,10 @@ import {
 import { decodeEventLog, formatEther, parseEther, type Hash } from "viem";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
 import {
+  Check,
   ChevronDown,
+  Copy,
+  ExternalLink,
   Globe,
   ImageIcon,
   Layers,
@@ -24,10 +29,15 @@ import {
   Wallet,
 } from "lucide-react";
 import { RhButton } from "@/components/ui/rh-button";
-import { CHAIN_CONFIG, OWNERSHIP_PRESETS } from "@/lib/chain";
-import { CONTRACTS, PUMP_ROBIN_FACTORY_ABI } from "@/lib/contracts";
+import {
+  CHAIN_CONFIG,
+  OWNERSHIP_PRESETS,
+  explorerAddressUrl,
+  explorerTxUrl,
+} from "@/lib/chain";
+import { BONDING_CURVE_ABI, CONTRACTS, PUMP_ROBIN_FACTORY_ABI } from "@/lib/contracts";
 import { useAppStore } from "@/lib/store";
-import { cn } from "@/lib/utils";
+import { cn, friendlyWalletError, shortenAddress } from "@/lib/utils";
 import {
   LAUNCH_EXTRA_SOCIAL_FIELDS,
   LAUNCH_PRIMARY_SOCIAL_FIELDS,
@@ -39,6 +49,7 @@ import {
 import {
   DEFAULT_SUPPLY,
   INITIAL_VIRTUAL_ETH,
+  INITIAL_VIRTUAL_TOKENS,
   ethInForSupplyPercent,
   formatSupplyShort,
   graduationMarketCapEth,
@@ -293,9 +304,11 @@ function Collapsible({
 }
 
 export default function LaunchPage() {
-  const { isConnected, address } = useAccount();
+  const router = useRouter();
+  const { address, isConnected, status: accountStatus } = useAccount();
   const { data: ethBalance } = useBalance({ address });
-  const { addToken, refreshTokens } = useAppStore();
+  const { addToken, addTradeLocal, refreshTokens, upsertToken } = useAppStore();
+  const walletReady = Boolean(address) || isConnected || accountStatus === "reconnecting";
 
   const [name, setName] = useState("");
   const [symbol, setSymbol] = useState("");
@@ -324,6 +337,14 @@ export default function LaunchPage() {
 
   const [status, setStatus] = useState<"idle" | "pending" | "success" | "error">("idle");
   const [error, setError] = useState("");
+  const [copiedField, setCopiedField] = useState<"token" | "tx" | null>(null);
+  const [launched, setLaunched] = useState<{
+    address: string;
+    bondingCurve?: string;
+    txHash: string;
+    name: string;
+    symbol: string;
+  } | null>(null);
   const pendingLaunch = useRef<{
     name: string;
     symbol: string;
@@ -432,7 +453,7 @@ export default function LaunchPage() {
   useEffect(() => {
     if (writeError) {
       setStatus("error");
-      setError(writeError.message.slice(0, 180));
+      setError(friendlyWalletError(writeError, "Transaction failed"));
     }
   }, [writeError]);
 
@@ -475,6 +496,45 @@ export default function LaunchPage() {
 
     void (async () => {
       try {
+        // Decode bags-style first buy from the same create tx (if any)
+        let launchTrade: {
+          ethAmount: number;
+          tokenAmount: number;
+          price: number;
+        } | null = null;
+        for (const log of receipt.logs) {
+          try {
+            const decoded = decodeEventLog({
+              abi: BONDING_CURVE_ABI,
+              data: log.data,
+              topics: log.topics,
+            });
+            if (decoded.eventName !== "Trade") continue;
+            const args = decoded.args as {
+              trader: `0x${string}`;
+              isBuy: boolean;
+              ethAmount: bigint;
+              tokenAmount: bigint;
+              newPrice: bigint;
+            };
+            if (!args.isBuy) continue;
+            if (
+              address &&
+              args.trader.toLowerCase() !== address.toLowerCase()
+            ) {
+              continue;
+            }
+            launchTrade = {
+              ethAmount: Number(formatEther(args.ethAmount)),
+              tokenAmount: Number(formatEther(args.tokenAmount)),
+              price: Number(formatEther(args.newPrice)),
+            };
+            break;
+          } catch {
+            /* not Trade */
+          }
+        }
+
         const res = await fetch("/api/tokens", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -489,6 +549,13 @@ export default function LaunchPage() {
             txHash: hash,
             source: "onchain",
             metadata: pending.metadata,
+            ...(launchTrade
+              ? {
+                  realEthReserves:
+                    launchTrade.ethAmount *
+                    (1 - CHAIN_CONFIG.tradeFeeBps / 10_000),
+                }
+              : {}),
           }),
         });
         const data = await res.json();
@@ -498,21 +565,104 @@ export default function LaunchPage() {
           createdAt: new Date(data.token.createdAt),
         });
         await refreshTokens();
+
+        const finalAddress = String(
+          data.token?.address || tokenAddress || ""
+        ).toLowerCase();
+        const finalCurve = String(
+          data.token?.bondingCurve || bondingCurve || ""
+        ).toLowerCase();
+
+        if (launchTrade && finalAddress && address) {
+          try {
+            const ethAfterFee =
+              launchTrade.ethAmount *
+              (1 - CHAIN_CONFIG.tradeFeeBps / 10_000);
+            const sync = await fetch("/api/trades/sync", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                tokenAddress: finalAddress,
+                trader: address,
+                isBuy: true,
+                ethAmount: launchTrade.ethAmount,
+                tokenAmount: launchTrade.tokenAmount,
+                price: launchTrade.price,
+                feeEth: launchTrade.ethAmount - ethAfterFee,
+                txHash: hash,
+                virtualEthReserves: INITIAL_VIRTUAL_ETH + ethAfterFee,
+                virtualTokenReserves:
+                  INITIAL_VIRTUAL_TOKENS - launchTrade.tokenAmount,
+                realEthReserves: ethAfterFee,
+                realTokenReserves:
+                  DEFAULT_SUPPLY - launchTrade.tokenAmount,
+              }),
+            });
+            const syncData = await sync.json();
+            if (sync.ok && syncData.token) {
+              upsertToken({
+                ...syncData.token,
+                createdAt: new Date(syncData.token.createdAt),
+              });
+              if (syncData.trade) {
+                addTradeLocal(
+                  {
+                    ...syncData.trade,
+                    timestamp: new Date(syncData.trade.timestamp),
+                  },
+                  {
+                    ...syncData.token,
+                    createdAt: new Date(syncData.token.createdAt),
+                  }
+                );
+              }
+              await refreshTokens();
+            }
+          } catch {
+            /* index best-effort */
+          }
+        }
+
+        setLaunched({
+          address: finalAddress,
+          bondingCurve: finalCurve || undefined,
+          txHash: hash,
+          name: pending.name,
+          symbol: pending.symbol,
+        });
         setStatus("success");
         pendingLaunch.current = null;
         resetForm();
+        clearLaunchDraft();
+
+        if (finalAddress) {
+          router.push(`/token/${finalAddress}`);
+        }
       } catch (err) {
-        setStatus("error");
+        // On-chain launch may still have succeeded — keep tx + decoded addresses if any
+        if (tokenAddress) {
+          setLaunched({
+            address: tokenAddress.toLowerCase(),
+            bondingCurve: bondingCurve?.toLowerCase(),
+            txHash: hash,
+            name: pending.name,
+            symbol: pending.symbol,
+          });
+          setStatus("success");
+          pendingLaunch.current = null;
+        } else {
+          setStatus("error");
+        }
         setError(
           err instanceof Error
-            ? err.message
-            : "Onchain launch succeeded but indexing failed — check Explore later"
+            ? friendlyWalletError(err, "Indexing failed — use the tx link below")
+            : "Onchain launch succeeded but indexing failed — use the tx link below"
         );
       }
     })();
     // resetForm is stable enough for this effect; omit to avoid re-runs
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isSuccess, receipt, hash, addToken, refreshTokens]);
+  }, [isSuccess, receipt, hash, addToken, refreshTokens, router, address, upsertToken, addTradeLocal]);
 
   const effectiveSupply = customSupply
     ? Math.max(1, Math.min(1e15, supply || DEFAULT_SUPPLY))
@@ -604,6 +754,12 @@ export default function LaunchPage() {
   const handleLaunch = async () => {
     if (!name || !symbol || !address) return;
     setError("");
+    setLaunched(null);
+
+    if (!imagePreview || imagePreview.startsWith("blob:")) {
+      setError("Upload a logo and wait for IPFS — Bags/DEX Screener need a public image URL.");
+      return;
+    }
 
     const parsedShares = feeSharing
       ? feeShares
@@ -620,6 +776,13 @@ export default function LaunchPage() {
     }
     if (feeSharing && Math.abs(feeShareTotalPct - 100) > 0.01) {
       setError("Fee share percentages must add up to 100%.");
+      return;
+    }
+
+    if (buyEthNum <= 0) {
+      setError(
+        "Set ownership / first buy (ETH) — Bags-style launches include a creator buy so GMGN shows liq + chart."
+      );
       return;
     }
 
@@ -641,10 +804,13 @@ export default function LaunchPage() {
 
     if (CONTRACTS.factory) {
       const fee = parseEther(CHAIN_CONFIG.creationFee);
+      const buyWei = parseEther(
+        Number.isFinite(buyEthNum) ? String(buyEthNum) : "0"
+      );
       pendingLaunch.current = {
         name,
         symbol,
-        imageUri: imagePreview || "",
+        imageUri: imagePreview,
         description,
         creator: address,
         metadata,
@@ -654,8 +820,9 @@ export default function LaunchPage() {
         address: CONTRACTS.factory,
         abi: PUMP_ROBIN_FACTORY_ABI,
         functionName: "createToken",
-        args: [name, symbol, imagePreview || "", description],
-        value: fee,
+        args: [name, symbol, imagePreview, description],
+        // One tx: creation fee + ownership buy (factory buyFor) — Bags createAndBuy
+        value: fee + buyWei,
       });
       setStatus("pending");
       return;
@@ -669,7 +836,7 @@ export default function LaunchPage() {
         body: JSON.stringify({
           name,
           symbol,
-          imageUri: imagePreview || "",
+          imageUri: imagePreview,
           description,
           creator: address,
           metadata,
@@ -686,7 +853,7 @@ export default function LaunchPage() {
       resetForm();
     } catch (err) {
       setStatus("error");
-      setError(err instanceof Error ? err.message : "Launch failed");
+      setError(friendlyWalletError(err, "Launch failed"));
     }
   };
 
@@ -708,8 +875,8 @@ export default function LaunchPage() {
             Launch your coin
           </h1>
           <p className="mt-2 max-w-xl text-[15px] leading-relaxed text-rh-muted">
-            Name it, set ownership, and go live on Robinhood Chain in one click —{" "}
-            {CHAIN_CONFIG.creationFee} ETH creation fee.
+            Bags-style create + first buy in one wallet confirm —{" "}
+            {CHAIN_CONFIG.creationFee} ETH creation fee plus your ownership buy.
           </p>
         </header>
 
@@ -1097,7 +1264,7 @@ export default function LaunchPage() {
                   <Wallet className="h-3.5 w-3.5 text-rh-lime" />
                   <span className="tabular-nums">
                     Wallet{" "}
-                    {isConnected
+                    {walletReady || address
                       ? `${walletEth.toFixed(4)} ETH`
                       : "— connect to see"}
                   </span>
@@ -1160,48 +1327,197 @@ export default function LaunchPage() {
 
             {/* CTA */}
             <div className="space-y-3 pt-1">
-              {status === "success" && (
-                <p className="rounded-2xl border border-rh-lime/30 bg-rh-lime/10 px-4 py-3 text-center text-sm text-rh-lime">
-                  Token launched. Check Explore.
-                </p>
+              {(status === "success" || launched) && launched && (
+                <div className="space-y-3 rounded-2xl border border-rh-lime/30 bg-rh-lime/10 px-4 py-4">
+                  <p className="text-center text-sm font-medium text-rh-lime">
+                    {launched.name} (${launched.symbol}) is live
+                  </p>
+
+                  <div className="space-y-2 text-left">
+                    <div className="rounded-xl bg-black/40 px-3 py-2.5">
+                      <p className="text-[10px] uppercase tracking-wider text-rh-dim">
+                        Token address (CA)
+                      </p>
+                      <div className="mt-1 flex items-center gap-2">
+                        <code className="min-w-0 flex-1 break-all font-mono text-[12px] text-white">
+                          {launched.address}
+                        </code>
+                        <button
+                          type="button"
+                          aria-label="Copy token address"
+                          className="shrink-0 rounded-lg p-1.5 text-rh-muted transition-colors hover:bg-white/10 hover:text-white"
+                          onClick={async () => {
+                            await navigator.clipboard.writeText(launched.address);
+                            setCopiedField("token");
+                            window.setTimeout(() => setCopiedField(null), 1500);
+                          }}
+                        >
+                          {copiedField === "token" ? (
+                            <Check className="h-3.5 w-3.5 text-rh-lime" />
+                          ) : (
+                            <Copy className="h-3.5 w-3.5" />
+                          )}
+                        </button>
+                      </div>
+                    </div>
+
+                    {launched.bondingCurve && (
+                      <div className="rounded-xl bg-black/40 px-3 py-2.5">
+                        <p className="text-[10px] uppercase tracking-wider text-rh-dim">
+                          Bonding curve
+                        </p>
+                        <code className="mt-1 block break-all font-mono text-[12px] text-white/80">
+                          {launched.bondingCurve}
+                        </code>
+                      </div>
+                    )}
+
+                    <div className="rounded-xl bg-black/40 px-3 py-2.5">
+                      <p className="text-[10px] uppercase tracking-wider text-rh-dim">
+                        Transaction
+                      </p>
+                      <div className="mt-1 flex items-center gap-2">
+                        <code className="min-w-0 flex-1 break-all font-mono text-[12px] text-white/80">
+                          {shortenAddress(launched.txHash, 6)}
+                        </code>
+                        <button
+                          type="button"
+                          aria-label="Copy transaction hash"
+                          className="shrink-0 rounded-lg p-1.5 text-rh-muted transition-colors hover:bg-white/10 hover:text-white"
+                          onClick={async () => {
+                            await navigator.clipboard.writeText(launched.txHash);
+                            setCopiedField("tx");
+                            window.setTimeout(() => setCopiedField(null), 1500);
+                          }}
+                        >
+                          {copiedField === "tx" ? (
+                            <Check className="h-3.5 w-3.5 text-rh-lime" />
+                          ) : (
+                            <Copy className="h-3.5 w-3.5" />
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col gap-2 sm:flex-row">
+                    <RhButton
+                      href={`/token/${launched.address}`}
+                      size="lg"
+                      className="w-full !rounded-2xl !py-4 text-[15px] font-semibold"
+                    >
+                      Open token page
+                    </RhButton>
+                    <a
+                      href={explorerAddressUrl(launched.address)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex w-full items-center justify-center gap-1.5 rounded-2xl border border-white/15 bg-black/40 px-4 py-4 text-[13px] font-medium text-white transition-colors hover:border-rh-lime/40 hover:text-rh-lime"
+                    >
+                      Explorer
+                      <ExternalLink className="h-3.5 w-3.5" />
+                    </a>
+                    <a
+                      href={explorerTxUrl(launched.txHash)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex w-full items-center justify-center gap-1.5 rounded-2xl border border-white/15 bg-black/40 px-4 py-4 text-[13px] font-medium text-white transition-colors hover:border-rh-lime/40 hover:text-rh-lime"
+                    >
+                      Tx
+                      <ExternalLink className="h-3.5 w-3.5" />
+                    </a>
+                  </div>
+
+                  <button
+                    type="button"
+                    className="w-full text-center text-[12px] text-rh-muted underline-offset-2 hover:text-white hover:underline"
+                    onClick={() => {
+                      setLaunched(null);
+                      setStatus("idle");
+                      setError("");
+                    }}
+                  >
+                    Launch another coin
+                  </button>
+                </div>
               )}
-              {error && (
+
+              {error && !(launched && status === "success") && (
                 <p className="rounded-2xl border border-red-500/25 bg-red-500/10 px-4 py-3 text-center text-sm text-red-300">
                   {error}
                 </p>
               )}
-
-              {!isConnected ? (
-                <ConnectButton.Custom>
-                  {({ openConnectModal }) => (
-                    <RhButton
-                      size="lg"
-                      className="w-full !rounded-2xl !py-5 text-[17px] font-semibold shadow-[0_0_40px_-10px_rgba(204,255,0,0.55)] transition-transform hover:scale-[1.01] active:scale-[0.99]"
-                      onClick={openConnectModal}
-                    >
-                      Connect wallet to launch
-                    </RhButton>
-                  )}
-                </ConnectButton.Custom>
-              ) : (
-                <RhButton
-                  size="lg"
-                  className="w-full !rounded-2xl !py-5 text-[17px] font-semibold shadow-[0_0_40px_-10px_rgba(204,255,0,0.55)] transition-transform hover:scale-[1.01] active:scale-[0.99]"
-                  onClick={handleLaunch}
-                  disabled={!canLaunch || launching}
-                >
-                  {launching
-                    ? "Launching…"
-                    : canLaunch
-                      ? `Launch for ${CHAIN_CONFIG.creationFee} ETH`
-                      : "Add name & ticker to launch"}
-                </RhButton>
+              {error && launched && (
+                <p className="rounded-2xl border border-amber-400/25 bg-amber-500/10 px-4 py-3 text-center text-sm text-amber-100/90">
+                  {error}
+                </p>
               )}
 
-              <p className="text-center text-[11px] leading-relaxed text-rh-dim">
-                Live on Robinhood Chain · curve starts instantly
-                {buyEthNum > 0 ? ` · first buy ${initialBuyEth} ETH` : ""}
-              </p>
+              {!launched && (
+                <ConnectButton.Custom>
+                  {({ account, chain, openConnectModal, openChainModal, mounted }) => {
+                    const rkConnected = Boolean(mounted && account && chain);
+                    const ready = rkConnected || walletReady || Boolean(address);
+
+                    if (!mounted) {
+                      return (
+                        <RhButton
+                          size="lg"
+                          className="w-full !rounded-2xl !py-5 text-[17px] font-semibold"
+                          disabled
+                        >
+                          Loading wallet…
+                        </RhButton>
+                      );
+                    }
+
+                    if (chain?.unsupported) {
+                      return (
+                        <RhButton
+                          size="lg"
+                          className="w-full !rounded-2xl !py-5 text-[17px] font-semibold"
+                          onClick={openChainModal}
+                        >
+                          Switch to Robinhood Chain
+                        </RhButton>
+                      );
+                    }
+
+                    if (!ready) {
+                      return (
+                        <RhButton
+                          size="lg"
+                          className="w-full !rounded-2xl !py-5 text-[17px] font-semibold shadow-[0_0_40px_-10px_rgba(204,255,0,0.55)] transition-transform hover:scale-[1.01] active:scale-[0.99]"
+                          onClick={openConnectModal}
+                        >
+                          Connect wallet to launch
+                        </RhButton>
+                      );
+                    }
+
+                    return (
+                      <RhButton
+                        size="lg"
+                        className="w-full !rounded-2xl !py-5 text-[17px] font-semibold shadow-[0_0_40px_-10px_rgba(204,255,0,0.55)] transition-transform hover:scale-[1.01] active:scale-[0.99]"
+                        onClick={handleLaunch}
+                        disabled={!canLaunch || launching}
+                      >
+                        {launching
+                          ? "Confirm create + buy…"
+                          : canLaunch
+                            ? `Launch + buy · ${minEthNeeded.toFixed(4)} ETH`
+                            : "Add name & ticker to launch"}
+                      </RhButton>
+                    );
+                  }}
+                </ConnectButton.Custom>
+              )}
+
+              {!launched && (
+                <p className="text-center text-[11px] leading-relaxed text-rh-dim">
+                  One wallet confirm · creation fee + ownership buy land on-chain together
+                </p>
+              )}
             </div>
           </div>
 

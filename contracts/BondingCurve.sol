@@ -86,7 +86,18 @@ contract BondingCurve is ReentrancyGuard {
         return (realEthReserves * 100) / GRADUATION_THRESHOLD;
     }
 
+    /// @notice Buy tokens for msg.sender (bonding-curve phase)
     function buy(uint256 minTokens) external payable nonReentrant {
+        _buy(msg.sender, minTokens);
+    }
+
+    /// @notice Buy tokens for `recipient` — used by factory create+buy (Bags-style)
+    function buyFor(address recipient, uint256 minTokens) external payable nonReentrant {
+        require(recipient != address(0), "Bad recipient");
+        _buy(recipient, minTokens);
+    }
+
+    function _buy(address recipient, uint256 minTokens) internal {
         require(!graduated, "Graduated");
         require(msg.value > 0, "No ETH sent");
 
@@ -102,13 +113,13 @@ contract BondingCurve is ReentrancyGuard {
         realEthReserves += ethAfterFee;
         realTokenReserves -= tokenAmount;
 
-        IERC20(address(token)).transfer(msg.sender, tokenAmount);
+        IERC20(address(token)).transfer(recipient, tokenAmount);
 
         if (fee > 0) {
             _distributeFee(fee);
         }
 
-        emit Trade(msg.sender, true, msg.value, tokenAmount, getPrice());
+        emit Trade(recipient, true, msg.value, tokenAmount, getPrice());
 
         if (realEthReserves >= GRADUATION_THRESHOLD) {
             _graduate();

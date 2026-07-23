@@ -300,6 +300,7 @@ export async function updateTokenCurve(
       | "realEthReserves"
       | "realTokenReserves"
       | "graduated"
+      | "metadata"
     >
   >
 ): Promise<TokenRecord | null> {
@@ -314,6 +315,7 @@ export async function updateTokenCurve(
     if (patch.realTokenReserves !== undefined)
       rowPatch.real_token_reserves = patch.realTokenReserves;
     if (patch.graduated !== undefined) rowPatch.graduated = patch.graduated;
+    if (patch.metadata !== undefined) rowPatch.metadata = patch.metadata;
 
     const { data, error } = await sb
       .from("pumprobin_tokens")
@@ -334,7 +336,13 @@ export async function updateTokenCurve(
     (t) => t.address.toLowerCase() === address.toLowerCase()
   );
   if (idx < 0) return null;
-  state.tokens[idx] = { ...state.tokens[idx], ...patch };
+  state.tokens[idx] = {
+    ...state.tokens[idx],
+    ...patch,
+    metadata: patch.metadata
+      ? { ...state.tokens[idx].metadata, ...patch.metadata }
+      : state.tokens[idx].metadata,
+  };
   await writeFileState(state);
   return state.tokens[idx];
 }

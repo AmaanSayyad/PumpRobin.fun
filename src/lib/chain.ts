@@ -75,5 +75,15 @@ export function dexScreenerPoolUrl(poolAddress: string): string {
   return `https://dexscreener.com/robinhood/${poolAddress}`;
 }
 
+const EXPLORER = robinhoodChain.blockExplorers.default.url;
+
+export function explorerAddressUrl(address: string): string {
+  return `${EXPLORER}/address/${address}`;
+}
+
+export function explorerTxUrl(txHash: string): string {
+  return `${EXPLORER}/tx/${txHash}`;
+}
+
 /** Ownership quick-select presets (bags.fm-style) */
 export const OWNERSHIP_PRESETS = [1, 10, 30, 50, 80] as const;

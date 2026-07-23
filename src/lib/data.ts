@@ -27,13 +27,15 @@ export interface LaunchMetadata {
   /** Share creator fee stream with other wallets (metadata until on-chain split ships) */
   feeSharing?: boolean;
   feeShares?: Array<{ address: string; pct: number }>;
+  /** Set after bonding-curve graduation */
+  uniswapPool?: string;
 }
 
 /** Always-visible socials on the launch form */
 export const LAUNCH_PRIMARY_SOCIAL_FIELDS = [
-  { key: "website", label: "Website", placeholder: "https://" },
-  { key: "twitter", label: "X / Twitter", placeholder: "https://x.com/…" },
-  { key: "telegram", label: "Telegram", placeholder: "https://t.me/…" },
+  { key: "website", label: "Website link", placeholder: "https://" },
+  { key: "twitter", label: "X / Twitter link", placeholder: "https://x.com/…" },
+  { key: "telegram", label: "Telegram link", placeholder: "https://t.me/…" },
 ] as const satisfies ReadonlyArray<{
   key: keyof LaunchMetadata;
   label: string;
@@ -42,17 +44,17 @@ export const LAUNCH_PRIMARY_SOCIAL_FIELDS = [
 
 /** Extra optional links (collapsed under “Add social links”) */
 export const LAUNCH_EXTRA_SOCIAL_FIELDS = [
-  { key: "discord", label: "Discord", placeholder: "https://discord.gg/…" },
-  { key: "linkedin", label: "LinkedIn", placeholder: "https://linkedin.com/…" },
-  { key: "github", label: "GitHub", placeholder: "https://github.com/…" },
-  { key: "litepaper", label: "Litepaper", placeholder: "https://…" },
-  { key: "teaserVideo", label: "Teaser video", placeholder: "https://…" },
-  { key: "pitchDeck", label: "Pitch deck", placeholder: "https://…" },
-  { key: "docs", label: "Docs", placeholder: "https://…" },
-  { key: "instagram", label: "Instagram", placeholder: "https://instagram.com/…" },
-  { key: "reddit", label: "Reddit", placeholder: "https://reddit.com/…" },
-  { key: "tiktok", label: "TikTok", placeholder: "https://tiktok.com/…" },
-  { key: "farcaster", label: "Farcaster", placeholder: "https://warpcast.com/…" },
+  { key: "discord", label: "Discord link", placeholder: "https://discord.gg/…" },
+  { key: "linkedin", label: "LinkedIn link", placeholder: "https://linkedin.com/…" },
+  { key: "github", label: "GitHub link", placeholder: "https://github.com/…" },
+  { key: "litepaper", label: "Litepaper link", placeholder: "https://…" },
+  { key: "teaserVideo", label: "Teaser video link", placeholder: "https://…" },
+  { key: "pitchDeck", label: "Pitch deck link", placeholder: "https://…" },
+  { key: "docs", label: "Docs link", placeholder: "https://…" },
+  { key: "instagram", label: "Instagram link", placeholder: "https://instagram.com/…" },
+  { key: "reddit", label: "Reddit link", placeholder: "https://reddit.com/…" },
+  { key: "tiktok", label: "TikTok link", placeholder: "https://tiktok.com/…" },
+  { key: "farcaster", label: "Farcaster link", placeholder: "https://warpcast.com/…" },
 ] as const satisfies ReadonlyArray<{
   key: keyof LaunchMetadata;
   label: string;
