@@ -1132,9 +1132,14 @@ export default function LaunchPage() {
                 You need at least{" "}
                 <span className="font-semibold tabular-nums text-amber-50">
                   {minEthNeeded.toFixed(4)} ETH
-                </span>{" "}
-                to cover creation fee, gas
-                {buyEthNum > 0 ? `, and this ${receivedPct.toFixed(2)}% buy` : ""}.
+                </span>
+                <span className="mt-1 block text-[11px] text-amber-100/70">
+                  {CHAIN_CONFIG.creationFee} creation
+                  {buyEthNum > 0
+                    ? ` + ${buyEthNum.toFixed(4)} ownership (${receivedPct.toFixed(2)}%)`
+                    : ""}{" "}
+                  + ~{CHAIN_CONFIG.launchGasBufferEth} network gas on Robinhood
+                </span>
               </div>
             </Panel>
 
