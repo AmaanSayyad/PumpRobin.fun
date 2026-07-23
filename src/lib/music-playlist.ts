@@ -1,4 +1,4 @@
-/** Royalty-free techno playlist (hosted under /public/music). */
+/** Royalty-free playlist (hosted under /public/music). */
 
 export type MusicTrack = {
   id: string;
@@ -9,20 +9,62 @@ export type MusicTrack = {
   bpm: number;
   color: string;
   license: string;
+  /** Spatial 8D / 16D mix */
+  spatial?: "8D" | "16D";
 };
 
 /**
  * Dark / high-energy picks for PumpRobin’s neon launchpad vibe.
- * Sourced from Jamendo via Internet Archive (royalty-free distribution).
+ * 8D/16D mixes are Jamendo CC tracks with spatial pan FX (Archive.org).
  */
 export const MUSIC_PLAYLIST: MusicTrack[] = [
+  {
+    id: "8d-perception",
+    title: "Perception (8D)",
+    artist: "Livio Amato",
+    src: "/music/8d-perception.mp3",
+    bpm: 90,
+    color: "#ccff00",
+    license: "CC BY-NC-SA · Jamendo / 8D mix",
+    spatial: "8D",
+  },
+  {
+    id: "8d-beyond",
+    title: "Beyond the Feel (8D)",
+    artist: "Livio Amato",
+    src: "/music/8d-beyond.mp3",
+    bpm: 95,
+    color: "#5ce1ff",
+    license: "CC BY-NC-SA · Jamendo / 8D mix",
+    spatial: "8D",
+  },
+  {
+    id: "16d-journey",
+    title: "The Long Journey (16D)",
+    artist: "Livio Amato",
+    src: "/music/16d-journey.mp3",
+    bpm: 80,
+    color: "#ff6b9d",
+    license: "CC BY-NC-SA · Jamendo / 16D mix",
+    spatial: "16D",
+  },
+  {
+    id: "16d-musa",
+    title: "Musa 5th Melody (16D)",
+    artist: "Livio Amato",
+    src: "/music/16d-musa.mp3",
+    bpm: 88,
+    color: "#c4a0ff",
+    license: "CC BY-NC-SA · Jamendo / 16D mix",
+    spatial: "16D",
+  },
   {
     id: "ultra-tech",
     title: "Ultra Tech",
     artist: "GYAKO",
     src: "/music/ultra-tech.mp3",
     bpm: 136,
-    color: "#ccff00",
+    color: "#ffd166",
     license: "Jamendo / Archive.org",
   },
   {
@@ -31,7 +73,7 @@ export const MUSIC_PLAYLIST: MusicTrack[] = [
     artist: "Mr.Aleks",
     src: "/music/tech-house-future.mp3",
     bpm: 128,
-    color: "#5ce1ff",
+    color: "#7dffb3",
     license: "Jamendo / Archive.org",
   },
   {
@@ -40,7 +82,7 @@ export const MUSIC_PLAYLIST: MusicTrack[] = [
     artist: "Play House",
     src: "/music/rave-sound.mp3",
     bpm: 138,
-    color: "#ff6b9d",
+    color: "#ff8c66",
     license: "Jamendo / Archive.org",
   },
   {
@@ -49,7 +91,7 @@ export const MUSIC_PLAYLIST: MusicTrack[] = [
     artist: "JURA",
     src: "/music/revenge-clown.mp3",
     bpm: 145,
-    color: "#c4a0ff",
+    color: "#66d9ff",
     license: "Jamendo / Archive.org",
   },
   {
@@ -58,7 +100,7 @@ export const MUSIC_PLAYLIST: MusicTrack[] = [
     artist: "nonymic",
     src: "/music/kristall.mp3",
     bpm: 132,
-    color: "#ffd166",
+    color: "#b8ff66",
     license: "Jamendo / Archive.org",
   },
   {
@@ -67,7 +109,7 @@ export const MUSIC_PLAYLIST: MusicTrack[] = [
     artist: "Ordinarypeople",
     src: "/music/assembly-line.mp3",
     bpm: 130,
-    color: "#7dffb3",
+    color: "#ff66a8",
     license: "Jamendo / Archive.org",
   },
   {
@@ -76,7 +118,7 @@ export const MUSIC_PLAYLIST: MusicTrack[] = [
     artist: "Dj TurtleGodfather",
     src: "/music/techno-refuse.mp3",
     bpm: 130,
-    color: "#ff8c66",
+    color: "#a0b4ff",
     license: "Jamendo / Archive.org",
   },
   {
@@ -85,7 +127,7 @@ export const MUSIC_PLAYLIST: MusicTrack[] = [
     artist: "Xtremist",
     src: "/music/aberrations.mp3",
     bpm: 140,
-    color: "#66d9ff",
+    color: "#66ffe0",
     license: "Jamendo / Archive.org",
   },
   {
@@ -94,7 +136,7 @@ export const MUSIC_PLAYLIST: MusicTrack[] = [
     artist: "Speedgt",
     src: "/music/mecha-life.mp3",
     bpm: 135,
-    color: "#b8ff66",
+    color: "#e0ff66",
     license: "Jamendo / Archive.org",
   },
   {
@@ -103,7 +145,7 @@ export const MUSIC_PLAYLIST: MusicTrack[] = [
     artist: "Areal Kollen",
     src: "/music/afghanistan.mp3",
     bpm: 128,
-    color: "#ff66a8",
+    color: "#ccff00",
     license: "Jamendo / Archive.org",
   },
   {
@@ -112,7 +154,7 @@ export const MUSIC_PLAYLIST: MusicTrack[] = [
     artist: "Data Collaborate",
     src: "/music/catching-vampire.mp3",
     bpm: 134,
-    color: "#a0b4ff",
+    color: "#5ce1ff",
     license: "Jamendo / Archive.org",
   },
   {
@@ -121,7 +163,7 @@ export const MUSIC_PLAYLIST: MusicTrack[] = [
     artist: "Outer Region Records",
     src: "/music/bioshell.mp3",
     bpm: 136,
-    color: "#66ffe0",
+    color: "#ff6b9d",
     license: "Jamendo / Archive.org",
   },
   {
@@ -130,7 +172,7 @@ export const MUSIC_PLAYLIST: MusicTrack[] = [
     artist: "Ordinarypeople",
     src: "/music/frequency.mp3",
     bpm: 128,
-    color: "#e0ff66",
+    color: "#c4a0ff",
     license: "Jamendo / Archive.org",
   },
 ];

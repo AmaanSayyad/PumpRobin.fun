@@ -234,7 +234,10 @@ export function newTokenRecord(input: {
     ).toLowerCase(),
     name: input.name,
     symbol: input.symbol.toUpperCase(),
-    imageUri: input.imageUri || "/brand/pumprobin-logo.png",
+    imageUri:
+      input.imageUri ||
+      process.env.NEXT_PUBLIC_PLATFORM_LOGO_IPFS ||
+      "/brand/pumprobin-logo.png",
     description: input.description,
     creator: input.creator.toLowerCase(),
     createdAt: new Date().toISOString(),

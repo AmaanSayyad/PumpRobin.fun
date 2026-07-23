@@ -27,7 +27,7 @@ contract BondingCurve is ReentrancyGuard {
     PumpRobinToken public immutable token;
     address public immutable creator;
     address public immutable factory;
-    /// @notice Kept for factory wiring; trade fees go 100% to creator (bags.fm-style)
+    /// @notice Receives the 0.3% platform cut of every bonding-curve trade
     address public immutable platformFeeRecipient;
 
     uint256 public virtualEthReserves;
@@ -37,8 +37,10 @@ contract BondingCurve is ReentrancyGuard {
     uint256 public constant TOTAL_SUPPLY = 1_000_000_000 * 1e18;
     /// @dev ~8 ETH real ≈ ~$30k dual-sided LP — clears common DEX Screener minLiq=$25k filters
     uint256 public constant GRADUATION_THRESHOLD = 8 ether;
-    /// @dev Match bags.fm: creators earn 1% of every trade (full fee → creator)
-    uint256 public constant FEE_BPS = 100; // 1%
+    /// @dev Total trade fee = creator 1% + platform 0.3%
+    uint256 public constant CREATOR_FEE_BPS = 100; // 1%
+    uint256 public constant PLATFORM_FEE_BPS = 30; // 0.3%
+    uint256 public constant FEE_BPS = CREATOR_FEE_BPS + PLATFORM_FEE_BPS; // 1.3%
 
     bool public graduated;
     address public uniswapPool;
@@ -154,9 +156,18 @@ contract BondingCurve is ReentrancyGuard {
     }
 
     function _distributeFee(uint256 fee) internal {
-        // bags.fm: creators earn 1% of every trade — full fee to creator
-        (bool c, ) = creator.call{value: fee}("");
-        require(c, "Creator fee failed");
+        // Split total fee: 1% creator + 0.3% platform (of trade volume)
+        uint256 creatorFee = (fee * CREATOR_FEE_BPS) / FEE_BPS;
+        uint256 platformFee = fee - creatorFee;
+
+        if (creatorFee > 0) {
+            (bool c, ) = creator.call{value: creatorFee}("");
+            require(c, "Creator fee failed");
+        }
+        if (platformFee > 0) {
+            (bool p, ) = platformFeeRecipient.call{value: platformFee}("");
+            require(p, "Platform fee failed");
+        }
     }
 
     /**

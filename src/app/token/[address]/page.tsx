@@ -415,7 +415,7 @@ export default function TokenPage({
             <p className="text-xs text-rh-dim text-center mt-3">
               {token.graduated
                 ? "Uniswap V3 · 2.5% slippage · Trading API"
-                : `${CHAIN_CONFIG.platformFeeBps / 100}% creator fee · Curve math`}
+                : `${CHAIN_CONFIG.creatorFeeBps / 100}% creator + ${CHAIN_CONFIG.platformFeeBps / 100}% platform · Curve math`}
             </p>
           </div>
 

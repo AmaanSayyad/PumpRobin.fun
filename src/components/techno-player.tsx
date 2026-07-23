@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import {
   ChevronDown,
   ChevronUp,
+  GripVertical,
   ListMusic,
   Pause,
   Play,
@@ -12,6 +13,7 @@ import {
   SkipForward,
   Volume2,
   VolumeX,
+  X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { MUSIC_PLAYLIST, type MusicTrack } from "@/lib/music-playlist";
@@ -24,6 +26,8 @@ type Persisted = {
   trackIndex?: number;
   collapsed?: boolean;
   disabled?: boolean;
+  x?: number;
+  y?: number;
 };
 
 function readPersisted(): Persisted {
@@ -44,9 +48,27 @@ function writePersisted(patch: Persisted) {
   }
 }
 
+function clampPos(x: number, y: number, w: number, h: number) {
+  const maxX = Math.max(8, window.innerWidth - w - 8);
+  const maxY = Math.max(8, window.innerHeight - h - 8);
+  return {
+    x: Math.min(maxX, Math.max(8, x)),
+    y: Math.min(maxY, Math.max(8, y)),
+  };
+}
+
 export function TechnoPlayer() {
   const pathname = usePathname();
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const panelRef = useRef<HTMLDivElement | null>(null);
+  const dragRef = useRef<{
+    ox: number;
+    oy: number;
+    sx: number;
+    sy: number;
+    moved: boolean;
+  } | null>(null);
+
   const [mounted, setMounted] = useState(false);
   const [playing, setPlaying] = useState(false);
   const [muted, setMuted] = useState(false);
@@ -57,6 +79,8 @@ export function TechnoPlayer() {
   const [showList, setShowList] = useState(false);
   const [needsGesture, setNeedsGesture] = useState(false);
   const [disabled, setDisabled] = useState(false);
+  const [pos, setPos] = useState({ x: 20, y: 0 });
+  const [dragging, setDragging] = useState(false);
   const startedRef = useRef(false);
   const trackIndexRef = useRef(0);
 
@@ -89,6 +113,18 @@ export function TechnoPlayer() {
     },
     [ensureAudio]
   );
+
+  const stopEverywhere = useCallback(() => {
+    const audio = audioRef.current;
+    if (audio) {
+      audio.pause();
+      audio.currentTime = 0;
+    }
+    setPlaying(false);
+    setDisabled(true);
+    setNeedsGesture(false);
+    writePersisted({ disabled: true });
+  }, []);
 
   const startPlayback = useCallback(
     async (opts?: { force?: boolean }) => {
@@ -136,6 +172,15 @@ export function TechnoPlayer() {
     trackIndexRef.current = idx;
     setTrackIndex(idx);
     audio.src = MUSIC_PLAYLIST[idx]!.src;
+
+    const defaultY = Math.max(8, window.innerHeight - 180);
+    const nextPos = clampPos(
+      typeof saved.x === "number" ? saved.x : 20,
+      typeof saved.y === "number" ? saved.y : defaultY,
+      300,
+      160
+    );
+    setPos(nextPos);
 
     const onTime = () => {
       if (!audio.duration || !Number.isFinite(audio.duration)) {
@@ -195,18 +240,72 @@ export function TechnoPlayer() {
       window.removeEventListener("pointerdown", unlock);
       window.removeEventListener("keydown", unlock);
     };
-    // intentionally mount-once
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  if (!mounted || pathname.startsWith("/admin")) return null;
+  useEffect(() => {
+    const onMove = (e: PointerEvent) => {
+      const d = dragRef.current;
+      if (!d) return;
+      d.moved = true;
+      const el = panelRef.current;
+      const w = el?.offsetWidth ?? 300;
+      const h = el?.offsetHeight ?? 160;
+      const next = clampPos(d.sx + (e.clientX - d.ox), d.sy + (e.clientY - d.oy), w, h);
+      setPos(next);
+    };
+    const onUp = () => {
+      if (!dragRef.current) return;
+      const el = panelRef.current;
+      const w = el?.offsetWidth ?? 300;
+      const h = el?.offsetHeight ?? 160;
+      setPos((p) => {
+        const next = clampPos(p.x, p.y, w, h);
+        writePersisted({ x: next.x, y: next.y });
+        return next;
+      });
+      dragRef.current = null;
+      setDragging(false);
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onUp);
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onUp);
+    };
+  }, []);
+
+  if (!mounted || pathname.startsWith("/admin") || disabled) {
+    if (mounted && disabled && !pathname.startsWith("/admin")) {
+      return (
+        <button
+          type="button"
+          onClick={() => {
+            setDisabled(false);
+            writePersisted({ disabled: false });
+            void startPlayback({ force: true });
+          }}
+          className="fixed bottom-4 left-4 z-[60] rounded-full border border-white/15 bg-black/80 px-3 py-1.5 text-[11px] text-rh-muted backdrop-blur hover:border-rh-lime/40 hover:text-rh-lime"
+        >
+          Music
+        </button>
+      );
+    }
+    return null;
+  }
 
   const bars = Array.from({ length: 16 }, (_, i) => i);
   const activeBar = Math.min(15, Math.floor(progress * 16));
 
   return (
-    <div className="fixed bottom-4 left-4 z-[60] flex max-w-[calc(100vw-2rem)] flex-col items-start gap-2 sm:bottom-5 sm:left-5">
-      {needsGesture && !disabled && !playing && (
+    <div
+      ref={panelRef}
+      className="fixed z-[60] flex max-w-[calc(100vw-1rem)] flex-col items-start gap-2"
+      style={{ left: pos.x, top: pos.y, touchAction: "none" }}
+    >
+      {needsGesture && !playing && (
         <button
           type="button"
           onClick={() => void startPlayback({ force: true })}
@@ -218,11 +317,28 @@ export function TechnoPlayer() {
 
       <div
         className={cn(
-          "overflow-hidden rounded-2xl border border-white/10 bg-[#111]/95 shadow-[0_20px_50px_-24px_rgba(0,0,0,0.9)] backdrop-blur-md transition-all",
-          collapsed ? "w-[200px]" : "w-[min(100%,300px)]"
+          "overflow-hidden rounded-2xl border border-white/10 bg-[#111]/95 shadow-[0_20px_50px_-24px_rgba(0,0,0,0.9)] backdrop-blur-md",
+          collapsed ? "w-[220px]" : "w-[min(100%,300px)]",
+          dragging && "cursor-grabbing ring-1 ring-rh-lime/40"
         )}
       >
-        <div className="flex items-center gap-2 px-3 py-2.5">
+        <div
+          className="flex cursor-grab items-center gap-1.5 px-2 py-2.5 active:cursor-grabbing"
+          onPointerDown={(e) => {
+            if ((e.target as HTMLElement).closest("button, input, a")) return;
+            dragRef.current = {
+              ox: e.clientX,
+              oy: e.clientY,
+              sx: pos.x,
+              sy: pos.y,
+              moved: false,
+            };
+            setDragging(true);
+            (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+          }}
+        >
+          <GripVertical className="h-4 w-4 shrink-0 text-rh-dim" aria-hidden />
+
           <button
             type="button"
             aria-label={playing ? "Pause" : "Play"}
@@ -244,11 +360,16 @@ export function TechnoPlayer() {
             )}
           </button>
 
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-[12px] font-medium text-white">{track.title}</p>
+          <div className="min-w-0 flex-1 select-none">
+            <p className="truncate text-[12px] font-medium text-white">
+              {track.title}
+              {track.spatial ? (
+                <span className="ml-1 text-[10px] text-rh-lime">{track.spatial}</span>
+              ) : null}
+            </p>
             {!collapsed && (
               <p className="truncate text-[10px] text-rh-muted">
-                {track.artist} · {track.bpm} BPM
+                {track.artist} · {track.bpm} BPM · drag to move
               </p>
             )}
           </div>
@@ -265,6 +386,15 @@ export function TechnoPlayer() {
             className="rounded-lg p-1.5 text-rh-muted hover:bg-white/5 hover:text-white"
           >
             {collapsed ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+          </button>
+
+          <button
+            type="button"
+            aria-label="Stop and hide player"
+            onClick={stopEverywhere}
+            className="rounded-lg p-1.5 text-rh-muted hover:bg-white/5 hover:text-red-300"
+          >
+            <X className="h-4 w-4" />
           </button>
         </div>
 
@@ -388,8 +518,14 @@ export function TechnoPlayer() {
                         className="h-2 w-2 shrink-0 rounded-full"
                         style={{ background: t.color }}
                       />
-                      <span className="min-w-0 flex-1 truncate font-medium">{t.title}</span>
-                      <span className="tabular-nums text-[10px] text-rh-dim">{t.bpm}</span>
+                      <span className="min-w-0 flex-1 truncate font-medium">
+                        {t.title}
+                      </span>
+                      {t.spatial ? (
+                        <span className="text-[10px] text-rh-lime">{t.spatial}</span>
+                      ) : (
+                        <span className="tabular-nums text-[10px] text-rh-dim">{t.bpm}</span>
+                      )}
                     </button>
                   </li>
                 ))}

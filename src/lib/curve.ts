@@ -87,7 +87,7 @@ export function calculateSellReturn(
   return { ethOut, newVirtualEth, newVirtualTokens };
 }
 
-export function applyFee(ethAmount: number, feeBps = CHAIN_CONFIG.platformFeeBps) {
+export function applyFee(ethAmount: number, feeBps = CHAIN_CONFIG.tradeFeeBps) {
   const fee = (ethAmount * feeBps) / 10_000;
   return { fee, afterFee: ethAmount - fee };
 }
@@ -100,7 +100,7 @@ export function ethInForTokenAmount(
   tokenAmount: number,
   virtualEth: number,
   virtualTokens: number,
-  feeBps = CHAIN_CONFIG.platformFeeBps
+  feeBps = CHAIN_CONFIG.tradeFeeBps
 ): number {
   if (!Number.isFinite(tokenAmount) || tokenAmount <= 0) return 0;
   if (tokenAmount >= virtualTokens) return Number.POSITIVE_INFINITY;

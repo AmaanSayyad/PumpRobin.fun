@@ -1,9 +1,9 @@
 import { CHAIN_CONFIG } from "./chain";
 
-/** Creator share of each bonding-curve trade (percent of trade volume). bags.fm-style: full fee. */
-export const CREATOR_FEE_PCT = CHAIN_CONFIG.platformFeeBps / 100;
-export const PLATFORM_FEE_PCT = 0;
-export const TRADE_FEE_PCT = CHAIN_CONFIG.platformFeeBps / 100;
+/** Fee shares of each bonding-curve trade (percent of trade volume). */
+export const CREATOR_FEE_PCT = CHAIN_CONFIG.creatorFeeBps / 100;
+export const PLATFORM_FEE_PCT = CHAIN_CONFIG.platformFeeBps / 100;
+export const TRADE_FEE_PCT = CHAIN_CONFIG.tradeFeeBps / 100;
 
 export const LAUNCH_MECHANICS = [
   {
@@ -39,20 +39,20 @@ export const CREATOR_FEE_CARDS = [
     detail: "Of every bonding-curve trade",
   },
   {
-    value: "On trade",
-    label: "Payout today",
-    detail: "Sent to creator on deployed contracts",
+    value: `${PLATFORM_FEE_PCT}%`,
+    label: "Platform share",
+    detail: "PumpRobin fee on every trade",
   },
   {
-    value: "Claim UX",
-    label: "Coming next",
-    detail: "Dashboard claim + payout redirect",
+    value: `${TRADE_FEE_PCT}%`,
+    label: "Total trade fee",
+    detail: "Taken on each buy & sell",
   },
 ] as const;
 
-export const CREATOR_FEES_INTRO = `Launching isn't only about going live — creators earn ${CREATOR_FEE_PCT}% of every buy and sell on their bonding curve (bags.fm-style: the full trade fee goes to the creator).`;
+export const CREATOR_FEES_INTRO = `Launching isn't only about going live — creators earn ${CREATOR_FEE_PCT}% of every buy and sell on their bonding curve, and PumpRobin takes ${PLATFORM_FEE_PCT}% as a platform fee (${TRADE_FEE_PCT}% total).`;
 
-export const CREATOR_FEES_BODY = `On deployed BondingCurve contracts, the creator fee is paid out on each trade. Fee-share splits (metadata), payout redirect, and post-graduation Uniswap LP fees are on the roadmap — see Roadmap for timing. Platform revenue is the ${CHAIN_CONFIG.creationFee} ETH creation fee.`;
+export const CREATOR_FEES_BODY = `On deployed BondingCurve contracts, both fee shares are paid out on each trade (creator wallet + platform collector). Fee-share splits among multiple wallets (metadata), payout redirect, and post-graduation Uniswap LP fee collection are on the roadmap — see Roadmap for timing. Platform also earns the ${CHAIN_CONFIG.creationFee} ETH creation fee.`;
 
 export const FAIR_BY_DESIGN = [
   {
@@ -60,8 +60,8 @@ export const FAIR_BY_DESIGN = [
     body: "Price follows constant-product virtual reserves (x·y = k). Progress to graduation is visible on every card and token page.",
   },
   {
-    title: "Creator fees on-chain",
-    body: `The ${TRADE_FEE_PCT}% trade fee goes entirely to the creator (bags.fm-style). What we document is what the contract does once the factory is live.`,
+    title: "Creator + platform fees on-chain",
+    body: `Every bonding-curve trade takes ${TRADE_FEE_PCT}% total — ${CREATOR_FEE_PCT}% to the creator and ${PLATFORM_FEE_PCT}% to PumpRobin. Paid instantly in the same transaction.`,
   },
   {
     title: "Launch options recorded",

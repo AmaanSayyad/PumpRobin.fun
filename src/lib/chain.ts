@@ -59,8 +59,11 @@ export const CHAIN_CONFIG = {
   launchGasBufferEth: "0.00035",
   /** ~8 ETH ≈ $30k LP at graduate — clears DEX Screener minLiq≈$25k filters */
   graduationThreshold: 8, // ETH
-  /** bags.fm-style: creators earn 1% of every bonding-curve trade */
-  platformFeeBps: 100, // 1%
+  /** Bonding-curve trade fees (of trade volume) */
+  creatorFeeBps: 100, // 1% → creator wallet on each trade
+  platformFeeBps: 30, // 0.3% → platform fee collector on each trade
+  /** Total taken from buys/sells before curve math (= creator + platform) */
+  tradeFeeBps: 130, // 1.3%
   totalSupply: 1_000_000_000,
   decimals: 18,
   feeCollector: FEE_COLLECTOR,

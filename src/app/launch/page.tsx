@@ -546,19 +546,36 @@ export default function LaunchPage() {
     setInitialBuyEth(value);
     setOwnershipPct(null);
   };
-  const handleImageUpload = (
+  const handleImageUpload = async (
     e: React.ChangeEvent<HTMLInputElement>,
     kind: "image" | "banner"
   ) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      const data = ev.target?.result as string;
-      if (kind === "image") setImagePreview(data);
-      else setBannerPreview(data);
-    };
-    reader.readAsDataURL(file);
+
+    // Instant local preview while Pinata upload runs
+    const localUrl = URL.createObjectURL(file);
+    if (kind === "image") setImagePreview(localUrl);
+    else setBannerPreview(localUrl);
+
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      const res = await fetch("/api/upload", { method: "POST", body: form });
+      const json = (await res.json()) as { url?: string; error?: string };
+      if (!res.ok || !json.url) {
+        throw new Error(json.error || "IPFS upload failed");
+      }
+      if (kind === "image") setImagePreview(json.url);
+      else setBannerPreview(json.url);
+      URL.revokeObjectURL(localUrl);
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Could not upload image to IPFS — try again"
+      );
+    }
   };
 
   const resetForm = () => {
@@ -687,10 +704,7 @@ export default function LaunchPage() {
 
       <div className="rh-container relative py-10 sm:py-14">
         <header className="mx-auto mb-8 max-w-5xl sm:mb-10">
-          <p className="text-[12px] font-medium uppercase tracking-[0.16em] text-rh-lime">
-            Launch
-          </p>
-          <h1 className="rh-display mt-2 text-[2.15rem] text-white sm:text-[2.75rem]">
+          <h1 className="rh-display text-[2.15rem] text-white sm:text-[2.75rem]">
             Launch your coin
           </h1>
           <p className="mt-2 max-w-xl text-[15px] leading-relaxed text-rh-muted">
@@ -1123,7 +1137,8 @@ export default function LaunchPage() {
 
               <p className="mt-3 text-[11px] leading-relaxed text-rh-dim">
                 Cost follows the bonding curve ({INITIAL_VIRTUAL_ETH} ETH × 1.073B virtual
-                reserves) plus the {CHAIN_CONFIG.platformFeeBps / 100}% creator trade fee —
+                reserves) plus the {CHAIN_CONFIG.creatorFeeBps / 100}% creator +{" "}
+                {CHAIN_CONFIG.platformFeeBps / 100}% platform trade fee —
                 same math as the on-chain buy. Spot FDV × % underestimates because price rises
                 as you buy.
               </p>

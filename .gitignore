@@ -17,3 +17,5 @@ cache/
 /lib/
 broadcast/
 .vercel
+
+.cursor/

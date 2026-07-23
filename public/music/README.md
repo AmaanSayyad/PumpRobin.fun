@@ -1,19 +1,14 @@
-# PumpRobin Radio — dark / high-energy royalty-free techno
+# PumpRobin Radio — royalty-free + spatial 8D/16D mixes
 #
-# Sources: Jamendo via Internet Archive
+# 8D / 16D (Jamendo CC BY-NC-SA via Archive.org, spatial FX via ffmpeg):
+#   8d-perception.mp3   — Livio Amato · Perception
+#   8d-beyond.mp3       — Livio Amato · Beyond the Feel
+#   16d-journey.mp3     — Livio Amato · The Long Journey
+#   16d-musa.mp3        — Livio Amato · Musa 5th Melody
 #
-# ultra-tech.mp3           — GYAKO
-# tech-house-future.mp3    — Mr.Aleks
-# rave-sound.mp3           — Play House
-# revenge-clown.mp3        — JURA
-# kristall.mp3             — nonymic
-# assembly-line.mp3        — Ordinarypeople
-# techno-refuse.mp3        — Dj TurtleGodfather
-# aberrations.mp3          — Xtremist
-# mecha-life.mp3           — Speedgt
-# afghanistan.mp3          — Areal Kollen
-# catching-vampire.mp3     — Data Collaborate
-# bioshell.mp3             — Outer Region Records
-# frequency.mp3            — Ordinarypeople
+# Techno set (Jamendo / Archive.org):
+#   ultra-tech, tech-house-future, rave-sound, revenge-clown, kristall,
+#   assembly-line, techno-refuse, aberrations, mecha-life, afghanistan,
+#   catching-vampire, bioshell, frequency
 #
 # Update src/lib/music-playlist.ts when replacing files.

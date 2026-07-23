@@ -7,6 +7,7 @@ import {
   CREATOR_FEES_BODY,
   CREATOR_FEES_INTRO,
   CREATOR_FEE_PCT,
+  PLATFORM_FEE_PCT,
   FAIR_BY_DESIGN,
   LAUNCH_MECHANICS,
   TRADE_FEE_PCT,
@@ -33,7 +34,7 @@ const FAQ = [
   },
   {
     q: "How do I earn as a creator?",
-    a: `You earn ${CREATOR_FEE_PCT}% of every bonding-curve trade on your token (bags.fm-style: full ${TRADE_FEE_PCT}% fee). On deployed contracts the fee is paid on each trade.`,
+    a: `You earn ${CREATOR_FEE_PCT}% of every bonding-curve trade on your token. PumpRobin takes ${PLATFORM_FEE_PCT}% (${TRADE_FEE_PCT}% total). Fees are paid on each trade.`,
   },
   {
     q: "Do I need to deploy my own API?",
@@ -49,7 +50,7 @@ const FAQ = [
   },
   {
     q: "Are fees transparent?",
-    a: `Yes — ${TRADE_FEE_PCT}% trade fee goes to the creator. Creation fee is ${CHAIN_CONFIG.creationFee} ETH (platform).`,
+    a: `Yes — ${TRADE_FEE_PCT}% total on bonding-curve trades (${CREATOR_FEE_PCT}% creator + ${PLATFORM_FEE_PCT}% platform). Creation fee is ${CHAIN_CONFIG.creationFee} ETH.`,
   },
 ];
 
@@ -143,7 +144,9 @@ export default function DocsPage() {
                 <h3 className="text-lg font-medium mb-2">What does a launch cost?</h3>
                 <p className="text-rh-muted leading-relaxed text-[15px]">
                   {CHAIN_CONFIG.creationFee} ETH creation fee, plus gas. Trading fee is{" "}
-                  {CHAIN_CONFIG.platformFeeBps / 100}% while on the bonding curve.
+                  {CHAIN_CONFIG.tradeFeeBps / 100}% while on the bonding curve (
+                  {CHAIN_CONFIG.creatorFeeBps / 100}% creator +{" "}
+                  {CHAIN_CONFIG.platformFeeBps / 100}% platform).
                 </p>
               </div>
             </div>
@@ -172,8 +175,8 @@ export default function DocsPage() {
               <div>
                 <h3 className="text-lg font-medium mb-2">Creator fees</h3>
                 <p className="text-rh-muted leading-relaxed text-[15px]">
-                  On-curve trade fee ({TRADE_FEE_PCT}%) goes entirely to the creator
-                  (bags.fm-style) in the BondingCurve contract.
+                  On-curve trade fee is {TRADE_FEE_PCT}% total — {CREATOR_FEE_PCT}% to the
+                  creator and {PLATFORM_FEE_PCT}% to PumpRobin, paid on each trade.
                 </p>
               </div>
             </div>
@@ -271,7 +274,7 @@ export default function DocsPage() {
             </h2>
             <div className="rounded-2xl bg-rh-raised overflow-hidden text-sm">
               <Row k="createFee" v={`${CHAIN_CONFIG.creationFee} ETH`} />
-              <Row k="Trade fee" v={`${CHAIN_CONFIG.platformFeeBps / 100}% → creator`} />
+              <Row k="Trade fee" v={`${CHAIN_CONFIG.tradeFeeBps / 100}% (${CHAIN_CONFIG.creatorFeeBps / 100}% creator + ${CHAIN_CONFIG.platformFeeBps / 100}% platform)`} />
               <Row k="GRADUATION_ETH" v={`${CHAIN_CONFIG.graduationThreshold} ETH`} />
               <Row k="Uniswap V3 fee" v="1% (10000) TOKEN/WETH" />
               <Row k="TOTAL_SUPPLY (default)" v={DEFAULT_SUPPLY.toLocaleString()} />

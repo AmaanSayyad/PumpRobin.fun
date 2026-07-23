@@ -28,12 +28,12 @@ const STEPS = [
   {
     n: "02",
     title: "Trade on the bonding curve",
-    body: `Anyone can buy or sell while the curve is active. Price follows a constant-product virtual AMM (x·y = k) — same family as bags.fm / pump.fun. Virtual reserves start at ~${INITIAL_VIRTUAL_ETH} ETH. Creators earn ${CHAIN_CONFIG.platformFeeBps / 100}% of every trade.`,
+    body: `Anyone can buy or sell while the curve is active. Price follows a constant-product virtual AMM (x·y = k) — same family as bags.fm / pump.fun. Virtual reserves start at ~${INITIAL_VIRTUAL_ETH} ETH. Fees: ${CHAIN_CONFIG.creatorFeeBps / 100}% creator + ${CHAIN_CONFIG.platformFeeBps / 100}% platform (${CHAIN_CONFIG.tradeFeeBps / 100}% total).`,
   },
   {
     n: "03",
     title: "Creator rewards",
-    body: `Creators earn ${CHAIN_CONFIG.platformFeeBps / 100}% of every bonding-curve trade (full fee, bags.fm-style). On deployed contracts that fee is sent on each trade. Claim / redirect flows and post-graduation LP fees are on the roadmap.`,
+    body: `Creators earn ${CHAIN_CONFIG.creatorFeeBps / 100}% of every bonding-curve trade; PumpRobin takes ${CHAIN_CONFIG.platformFeeBps / 100}%. Both are sent on each trade. Claim / redirect flows and post-graduation LP fees are on the roadmap.`,
   },
   {
     n: "04",
@@ -50,15 +50,15 @@ const STEPS = [
 const TOKENOMICS = [
   { label: "Default supply", value: "1B" },
   { label: "Virtual ETH", value: `${INITIAL_VIRTUAL_ETH}` },
-  { label: "Trade fee", value: `${CHAIN_CONFIG.platformFeeBps / 100}%` },
+  { label: "Trade fee", value: `${CHAIN_CONFIG.tradeFeeBps / 100}%` },
   { label: "Graduation", value: `${CHAIN_CONFIG.graduationThreshold} ETH` },
 ];
 
 const FEES = [
   {
     title: "Bonding curve buy / sell",
-    detail: `100% → creator (bags.fm-style)`,
-    value: `${CHAIN_CONFIG.platformFeeBps / 100}% total`,
+    detail: `${CHAIN_CONFIG.creatorFeeBps / 100}% creator + ${CHAIN_CONFIG.platformFeeBps / 100}% platform`,
+    value: `${CHAIN_CONFIG.tradeFeeBps / 100}% total`,
   },
   {
     title: "Token creation",
@@ -87,7 +87,7 @@ const FAQ = [
   },
   {
     q: "What fees does PumpRobin charge?",
-    a: `${CHAIN_CONFIG.creationFee} ETH creation fee plus ${CHAIN_CONFIG.platformFeeBps / 100}% on bonding-curve trades (paid to the creator). Network gas is separate.`,
+    a: `${CHAIN_CONFIG.creationFee} ETH creation fee plus ${CHAIN_CONFIG.tradeFeeBps / 100}% on bonding-curve trades (${CHAIN_CONFIG.creatorFeeBps / 100}% creator + ${CHAIN_CONFIG.platformFeeBps / 100}% platform). Network gas is separate.`,
   },
   {
     q: "Is liquidity rug-pullable?",
@@ -99,7 +99,7 @@ const FAQ = [
   },
   {
     q: "How do I earn as a creator?",
-    a: `You earn ${CREATOR_FEE_PCT}% of every bonding-curve trade on your token. On deployed contracts that share is paid on each trade; claim / redirect UX is next on the roadmap.`,
+    a: `You earn ${CREATOR_FEE_PCT}% of every bonding-curve trade on your token (${CHAIN_CONFIG.platformFeeBps / 100}% goes to the platform). Paid on each trade in the same transaction.`,
   },
   {
     q: "What do anti-snipe and max wallet do?",

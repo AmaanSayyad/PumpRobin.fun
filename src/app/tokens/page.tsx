@@ -10,7 +10,7 @@ import { MediaFrame, SplitHero } from "@/components/ui/media-frame";
  */
 
 const COST_ROWS = [
-  { platform: "PumpRobin.fun", amount: "1% on curve → creator", delta: "—", highlight: true },
+  { platform: "PumpRobin.fun", amount: "1% creator + 0.3% platform", delta: "—", highlight: true },
   { platform: "Typical CEX listing", amount: "High listing fees", delta: "Gated", highlight: false },
   { platform: "Seeded AMM", amount: "Requires LP capital", delta: "Upfront", highlight: false },
   { platform: "Permissioned pad", amount: "Approvals required", delta: "Waitlist", highlight: false },
@@ -63,7 +63,7 @@ const FAQ = [
   },
   {
     q: "What does it cost?",
-    a: "0.0005 ETH to launch, plus gas. Creators earn 1% of every bonding-curve trade.",
+    a: "0.0005 ETH to launch, plus gas. Creators earn 1% and PumpRobin takes 0.3% on every bonding-curve trade.",
   },
 ];
 

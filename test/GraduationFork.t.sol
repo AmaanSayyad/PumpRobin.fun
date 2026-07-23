@@ -30,8 +30,8 @@ contract GraduationForkTest is Test {
         );
         BondingCurve curve = BondingCurve(payable(curveAddr));
 
-        // Buy past graduation threshold (fees reduce net, so send extra)
-        curve.buy{value: 8.2 ether}(0);
+        // Buy past graduation threshold (1.3% fees reduce net, so send extra)
+        curve.buy{value: 8.25 ether}(0);
         vm.stopPrank();
 
         assertTrue(curve.graduated(), "should be graduated");
