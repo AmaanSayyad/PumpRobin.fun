@@ -21,8 +21,9 @@ const PHASES = [
     items: [
       "Deploy PumpRobinFactory + BondingCurve to Robinhood Chain mainnet",
       "Wire create / buy / sell to live contracts from the UI",
+      "Creator fee claim (1% accrues on curve)",
+      "Optional payout redirect",
       "Uniswap V3 graduation (1% TOKEN/WETH, full-range, LP NFT locked)",
-      "Creator fee claim + optional payout redirect",
     ],
   },
   {

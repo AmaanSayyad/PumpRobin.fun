@@ -99,10 +99,9 @@ export default function EarnPage() {
           <h2 className="rh-display text-3xl sm:text-4xl mb-4">Creator fees — paid automatically</h2>
           <p className="text-rh-muted text-lg leading-relaxed mb-6">
             You earn <span className="text-rh-lime font-medium">1%</span> of every bonding-curve
-            trade on your coin. PumpRobin takes <span className="text-white">0.3%</span>. Both
-            amounts are sent in the same transaction as the buy/sell —{" "}
-            <span className="text-white">no claim button</span>. Fees land in the creator wallet
-            you used at launch.
+            trade on your coin. Fees accumulate on the curve — use{" "}
+            <span className="text-white">Claim</span> on your token page anytime.
+            PumpRobin takes <span className="text-white">0.3%</span> per trade automatically.
           </p>
           <div className="flex flex-wrap justify-center gap-3">
             <RhButton href="/launch" size="lg">

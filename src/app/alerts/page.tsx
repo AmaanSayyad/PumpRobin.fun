@@ -267,7 +267,7 @@ export default function AlertsPage() {
 
         <div className="mt-10 border border-rh-raised bg-black p-5">
           <h3 className="mb-2 text-sm font-medium text-white">
-            Creator fees — no claim needed
+            Creator fees — claim anytime
           </h3>
           <p className="text-sm leading-relaxed text-rh-muted">
             On every bonding-curve buy/sell, traders pay{" "}
@@ -278,14 +278,12 @@ export default function AlertsPage() {
             <span className="text-rh-lime">
               {CHAIN_CONFIG.creatorFeeBps / 100}%
             </span>{" "}
-            is sent <strong className="font-medium text-white">instantly</strong>{" "}
-            to the creator wallet in the same transaction, and{" "}
+            accrues for the creator (claim from the token page), and{" "}
             <span className="text-white">
               {CHAIN_CONFIG.platformFeeBps / 100}%
             </span>{" "}
-            goes to PumpRobin. There is nothing to claim for curve fees — check
-            your wallet balance after trades. Post-graduation Uniswap LP fee
-            claims are on the roadmap.
+            goes to PumpRobin instantly. Post-graduation Uniswap LP fee claims
+            are on the roadmap.
           </p>
           <Link
             href="/earn"

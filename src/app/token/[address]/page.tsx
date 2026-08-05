@@ -35,6 +35,10 @@ import {
 } from "@/lib/uniswap-trade";
 import { executeCurveTrade } from "@/lib/curve-trade";
 import {
+  claimCreatorFees,
+  readPendingCreatorFees,
+} from "@/lib/claim-fees";
+import {
   ArrowLeft,
   ArrowUpRight,
   ArrowDownRight,
@@ -104,12 +108,62 @@ export default function TokenPage({
   const [quoteOut, setQuoteOut] = useState<string | null>(null);
   const [quoteGasUsd, setQuoteGasUsd] = useState<string | null>(null);
   const [copied, setCopied] = useState<"ca" | "curve" | null>(null);
+  const [pendingFeesEth, setPendingFeesEth] = useState<number | null>(null);
+  const [claimBusy, setClaimBusy] = useState(false);
+  const [claimMsg, setClaimMsg] = useState("");
 
   // Prefer address presence — matches header WalletButton / RainbowKit better than isConnected alone
   const activeWallet = (wallet ?? undefined) as Address | undefined;
   const walletReady =
     Boolean(activeWallet) &&
     (isConnected || status === "connected" || status === "reconnecting");
+
+  const isCreator =
+    Boolean(activeWallet) &&
+    Boolean(token) &&
+    activeWallet!.toLowerCase() === token!.creator.toLowerCase();
+
+  // Load pending creator fees when viewer is the creator
+  useEffect(() => {
+    if (!token?.bondingCurve || !isCreator) {
+      setPendingFeesEth(null);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const amt = await readPendingCreatorFees(
+          wagmiConfig,
+          token.bondingCurve as Address
+        );
+        if (!cancelled) setPendingFeesEth(amt);
+      } catch {
+        if (!cancelled) setPendingFeesEth(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [token?.bondingCurve, token?.creator, isCreator, wagmiConfig, tokenTrades.length]);
+
+  const submitClaim = async () => {
+    if (!token?.bondingCurve || !isCreator) return;
+    setClaimBusy(true);
+    setClaimMsg("");
+    setError("");
+    try {
+      const result = await claimCreatorFees({
+        config: wagmiConfig,
+        curve: token.bondingCurve as Address,
+      });
+      setPendingFeesEth(0);
+      setClaimMsg(`Claimed ${formatEth(result.amountEth)} ETH`);
+    } catch (err) {
+      setError(friendlyWalletError(err, "Claim failed"));
+    } finally {
+      setClaimBusy(false);
+    }
+  };
 
   // Refresh live curve reserves so raised / mcap / holders aren't stale
   useEffect(() => {
@@ -743,9 +797,44 @@ export default function TokenPage({
             <p className="mt-3 text-center text-[11px] text-rh-dim">
               {token.graduated
                 ? "Uniswap V3 · 2.5% slippage · Trading API"
-                : `On-chain curve · ${CHAIN_CONFIG.creatorFeeBps / 100}% creator + ${CHAIN_CONFIG.platformFeeBps / 100}% platform · DEX chart after ~${CHAIN_CONFIG.graduationThreshold} ETH`}
+                : `On-chain curve · ${CHAIN_CONFIG.creatorFeeBps / 100}% creator (claimable) + ${CHAIN_CONFIG.platformFeeBps / 100}% platform · DEX after ~${CHAIN_CONFIG.graduationThreshold} ETH`}
             </p>
           </div>
+
+          {isCreator && token.bondingCurve && (
+            <div className="relative isolate border border-rh-lime/30 bg-rh-lime/5 p-5">
+              <p className="text-xs uppercase tracking-wider text-rh-dim">
+                Creator fees
+              </p>
+              <p className="mt-1 text-2xl font-medium tabular-nums text-white">
+                {pendingFeesEth == null
+                  ? "—"
+                  : `${formatEth(pendingFeesEth)} ETH`}
+              </p>
+              <p className="mt-1 text-[11px] text-rh-muted">
+                {CHAIN_CONFIG.creatorFeeBps / 100}% of curve volume accrues here —
+                claim anytime to your wallet.
+              </p>
+              {claimMsg && (
+                <p className="mt-2 text-xs text-rh-lime">{claimMsg}</p>
+              )}
+              <RhButton
+                className="mt-4 w-full"
+                disabled={
+                  claimBusy ||
+                  pendingFeesEth == null ||
+                  pendingFeesEth <= 0
+                }
+                onClick={() => void submitClaim()}
+              >
+                {claimBusy
+                  ? "Confirm claim…"
+                  : pendingFeesEth != null && pendingFeesEth > 0
+                    ? `Claim ${formatEth(pendingFeesEth)} ETH`
+                    : "Nothing to claim"}
+              </RhButton>
+            </div>
+          )}
 
           <TopHoldersPanel holders={topHolders} />
 

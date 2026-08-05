@@ -74,7 +74,7 @@ export const CHAIN_CONFIG = {
   /** ~8 ETH ≈ $30k LP at graduate — clears DEX Screener minLiq≈$25k filters */
   graduationThreshold: 8, // ETH
   /** Bonding-curve trade fees (of trade volume) */
-  creatorFeeBps: 100, // 1% → creator wallet on each trade
+  creatorFeeBps: 100, // 1% → accrues for creator claim
   platformFeeBps: 30, // 0.3% → platform fee collector on each trade
   /** Total taken from buys/sells before curve math (= creator + platform) */
   tradeFeeBps: 130, // 1.3%

@@ -34,7 +34,7 @@ const FAQ = [
   },
   {
     q: "How do I earn as a creator?",
-    a: `You earn ${CREATOR_FEE_PCT}% of every bonding-curve trade on your token. PumpRobin takes ${PLATFORM_FEE_PCT}% (${TRADE_FEE_PCT}% total). Fees are paid on each trade.`,
+    a: `You earn ${CREATOR_FEE_PCT}% of every bonding-curve trade on your token. PumpRobin takes ${PLATFORM_FEE_PCT}% (${TRADE_FEE_PCT}% total). Creator fees accrue until you claim them on the token page.`,
   },
   {
     q: "Do I need to deploy my own API?",

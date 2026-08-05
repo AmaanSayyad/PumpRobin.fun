@@ -33,7 +33,7 @@ const STEPS = [
   {
     n: "03",
     title: "Creator rewards",
-    body: `Creators earn ${CHAIN_CONFIG.creatorFeeBps / 100}% of every bonding-curve trade; PumpRobin takes ${CHAIN_CONFIG.platformFeeBps / 100}%. Both are sent on each trade. Claim / redirect flows and post-graduation LP fees are on the roadmap.`,
+    body: `Creators earn ${CHAIN_CONFIG.creatorFeeBps / 100}% of every bonding-curve trade (claim from the token page); PumpRobin takes ${CHAIN_CONFIG.platformFeeBps / 100}% instantly. Post-graduation LP fees are on the roadmap.`,
   },
   {
     n: "04",
@@ -99,7 +99,7 @@ const FAQ = [
   },
   {
     q: "How do I earn as a creator?",
-    a: `You earn ${CREATOR_FEE_PCT}% of every bonding-curve trade on your token (${CHAIN_CONFIG.platformFeeBps / 100}% goes to the platform). Paid on each trade in the same transaction.`,
+    a: `You earn ${CREATOR_FEE_PCT}% of every bonding-curve trade on your token (${CHAIN_CONFIG.platformFeeBps / 100}% goes to the platform). Creator fees accumulate on the curve — claim them anytime from the token page.`,
   },
   {
     q: "What do anti-snipe and max wallet do?",
