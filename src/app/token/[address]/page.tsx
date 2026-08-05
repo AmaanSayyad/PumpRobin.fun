@@ -492,16 +492,15 @@ export default function TokenPage({
               >
                 Explorer
               </a>
+              <Link
+                href={`/wallet/${token.creator}`}
+                title="Creator"
+                aria-label="Creator profile"
+                className="rounded-md p-1.5 text-rh-muted hover:bg-white/5 hover:text-rh-lime"
+              >
+                <CreatorIcon />
+              </Link>
             </div>
-
-            <Link
-              href={`/wallet/${token.creator}`}
-              title="Creator"
-              aria-label="Creator profile"
-              className="rounded-md p-1.5 text-rh-muted hover:bg-white/5 hover:text-rh-lime sm:ml-0"
-            >
-              <CreatorIcon />
-            </Link>
           </div>
 
           <details className="mt-2 group">
