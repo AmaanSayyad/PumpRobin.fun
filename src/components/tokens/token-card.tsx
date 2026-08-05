@@ -13,49 +13,9 @@ interface TokenCardProps {
   index?: number;
 }
 
-const CREATOR_EMOJIS = [
-  "🦊",
-  "🐺",
-  "🐯",
-  "🦁",
-  "🐸",
-  "🐙",
-  "🦄",
-  "🐲",
-  "🦈",
-  "🦅",
-  "🦉",
-  "🐝",
-  "🦋",
-  "🐢",
-  "🐼",
-  "🐨",
-  "🐧",
-  "🦩",
-  "🦖",
-  "🤖",
-  "👻",
-  "🎃",
-  "🧿",
-  "💎",
-  "⚡",
-  "🔥",
-  "🌙",
-  "⭐",
-  "🍀",
-  "🎯",
-  "🎮",
-  "🧩",
-];
-
-/** Stable emoji avatar from wallet address (same creator → same emoji). */
-export function creatorEmoji(address: string): string {
-  const hex = address.toLowerCase().replace(/^0x/, "");
-  let hash = 0;
-  for (let i = 0; i < hex.length; i++) {
-    hash = (hash * 31 + hex.charCodeAt(i)) >>> 0;
-  }
-  return CREATOR_EMOJIS[hash % CREATOR_EMOJIS.length];
+/** Creator avatar emoji — same everywhere. */
+export function creatorEmoji(_address?: string): string {
+  return "👨‍💻";
 }
 
 function XIcon({ className }: { className?: string }) {
