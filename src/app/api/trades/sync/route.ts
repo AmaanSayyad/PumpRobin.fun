@@ -76,9 +76,22 @@ export async function POST(request: Request) {
     realEthReserves: realEthReserves ?? token.realEthReserves,
     realTokenReserves: realTokenReserves ?? token.realTokenReserves,
     graduated: graduated ?? token.graduated,
-    metadata: uniswapPool
-      ? { ...token.metadata, uniswapPool }
-      : token.metadata,
+    metadata: (() => {
+      const supply = token.metadata?.supply ?? 1_000_000_000;
+      const tradePrice = Number(price) || 0;
+      const mcap = tradePrice * supply;
+      const prevAth = token.metadata?.athMarketCapEth ?? 0;
+      const athMarketCapEth = Math.max(prevAth, mcap);
+      return {
+        ...token.metadata,
+        ...(uniswapPool ? { uniswapPool } : {}),
+        athMarketCapEth,
+        athAt:
+          athMarketCapEth > prevAth
+            ? new Date().toISOString()
+            : token.metadata?.athAt,
+      };
+    })(),
   });
 
   await addTrade(trade);

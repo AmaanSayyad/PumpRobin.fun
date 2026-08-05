@@ -78,6 +78,32 @@ export default function TokenPage({
     Boolean(activeWallet) &&
     (isConnected || status === "connected" || status === "reconnecting");
 
+  // Refresh live curve reserves so raised / mcap / holders aren't stale
+  useEffect(() => {
+    if (!address) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch(`/api/tokens/${address}/refresh`, {
+          method: "POST",
+        });
+        if (!res.ok || cancelled) return;
+        const data = await res.json();
+        if (data.token && !cancelled) {
+          upsertToken({
+            ...data.token,
+            createdAt: new Date(data.token.createdAt),
+          });
+        }
+      } catch {
+        /* best-effort */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [address, upsertToken]);
+
   const chartData = useMemo(
     () =>
       [...tokenTrades]
@@ -375,16 +401,44 @@ export default function TokenPage({
             chartData={chartData}
           />
 
-          <div className="grid grid-cols-2 gap-px bg-rh-raised sm:grid-cols-4">
+          <div className="grid grid-cols-2 gap-px bg-rh-raised sm:grid-cols-3 lg:grid-cols-5">
             {[
-              { label: "Market cap", value: `${formatEth(token.marketCap)} ETH` },
-              { label: "24h volume", value: `${formatEth(token.volume24h)} ETH` },
-              { label: "Holders", value: String(Math.max(token.holders, topHolders.filter((h) => !h.isCurve).length)) },
-              { label: "ETH reserves", value: `${formatEth(token.ethReserves)} ETH` },
+              {
+                label: "Market cap (FDV)",
+                value: `${formatEth(token.marketCap)} ETH`,
+                hint: "Price × total supply",
+              },
+              {
+                label: "ATH market cap",
+                value: `${formatEth(token.athMarketCap)} ETH`,
+                hint: "Peak FDV seen",
+              },
+              {
+                label: "24h volume",
+                value: `${formatEth(token.volume24h)} ETH`,
+              },
+              {
+                label: "Holders",
+                value: String(
+                  Math.max(
+                    token.holders,
+                    topHolders.filter((h) => !h.isCurve).length
+                  )
+                ),
+                hint: "Wallets with balance",
+              },
+              {
+                label: "Raised (curve ETH)",
+                value: `${formatEth(token.ethReserves)} ETH`,
+                hint: `Of ${CHAIN_CONFIG.graduationThreshold} ETH to graduate`,
+              },
             ].map((s) => (
               <div key={s.label} className="bg-black p-4 text-center">
                 <p className="mb-1 text-xs text-rh-muted">{s.label}</p>
                 <p className="text-sm font-medium">{s.value}</p>
+                {"hint" in s && s.hint && (
+                  <p className="mt-1 text-[10px] text-rh-dim">{s.hint}</p>
+                )}
               </div>
             ))}
           </div>
@@ -599,9 +653,16 @@ export default function TokenPage({
 
           <div className="relative isolate space-y-3 border border-rh-raised bg-black p-5">
             <div>
-              <p className="mb-1 text-xs text-rh-muted">Creator</p>
-              <p className="font-mono text-sm">
+              <p className="mb-1 text-xs text-rh-muted">Created by</p>
+              <Link
+                href={`/wallet/${token.creator}`}
+                className="inline-flex items-center gap-1.5 font-mono text-sm text-rh-lime hover:underline"
+              >
                 {shortenAddress(token.creator)}
+                <ExternalLink className="h-3 w-3 opacity-70" />
+              </Link>
+              <p className="mt-1 text-[11px] text-rh-dim">
+                Open creator profile — launches, holdings, trades
               </p>
             </div>
             <div>

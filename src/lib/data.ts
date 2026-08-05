@@ -1,3 +1,5 @@
+import { CHAIN_CONFIG } from "@/lib/chain";
+
 export interface LaunchMetadata {
   website?: string;
   twitter?: string;
@@ -29,6 +31,10 @@ export interface LaunchMetadata {
   feeShares?: Array<{ address: string; pct: number }>;
   /** Set after bonding-curve graduation */
   uniswapPool?: string;
+  /** All-time high fully diluted market cap in ETH */
+  athMarketCapEth?: number;
+  /** ISO timestamp when ATH was last updated */
+  athAt?: string;
 }
 
 /** Always-visible socials on the launch form */
@@ -134,12 +140,15 @@ export interface TokenData {
   creator: string;
   createdAt: Date;
   price: number; // ETH per token
-  marketCap: number; // ETH
+  marketCap: number; // ETH FDV (price × total supply)
+  /** Peak FDV seen (ETH) */
+  athMarketCap: number;
   volume24h: number; // ETH
   holders: number;
   progress: number;
   graduated: boolean;
   priceChange24h: number; // percent
+  /** Real ETH sitting in the bonding curve (raised toward graduation) */
   ethReserves: number;
   virtualEthReserves: number;
   virtualTokenReserves: number;
@@ -214,19 +223,23 @@ function volumeInWindow(
     .reduce((s, t) => s + t.ethAmount, 0);
 }
 
-function uniqueHolders(trades: TradeRecord[], tokenAddress: string): number {
+function uniqueHolders(
+  trades: TradeRecord[],
+  tokenAddress: string,
+  bondingCurve?: string | null
+): number {
+  const curve = bondingCurve?.toLowerCase();
   const net = new Map<string, number>();
   for (const t of trades) {
-    if (t.tokenAddress !== tokenAddress) continue;
-    const prev = net.get(t.trader.toLowerCase()) ?? 0;
-    net.set(
-      t.trader.toLowerCase(),
-      prev + (t.isBuy ? t.tokenAmount : -t.tokenAmount)
-    );
+    if (t.tokenAddress.toLowerCase() !== tokenAddress.toLowerCase()) continue;
+    const key = t.trader.toLowerCase();
+    if (curve && key === curve) continue;
+    const prev = net.get(key) ?? 0;
+    net.set(key, prev + (t.isBuy ? t.tokenAmount : -t.tokenAmount));
   }
   let count = 0;
   for (const bal of net.values()) {
-    if (bal > 1e-12) count++;
+    if (bal > 1e-9) count++;
   }
   return count;
 }
@@ -271,6 +284,33 @@ export function enrichToken(
   const price = priceOf(token);
   const since24h = Date.now() - 24 * 60 * 60 * 1000;
   const supply = token.metadata?.supply ?? 1_000_000_000;
+  const marketCap = price * supply;
+  const launchFdv = (1.3 / 1_073_000_000) * supply;
+
+  let athFromTrades = 0;
+  for (const t of trades) {
+    if (t.tokenAddress.toLowerCase() !== token.address.toLowerCase()) continue;
+    if (t.price > 0) athFromTrades = Math.max(athFromTrades, t.price * supply);
+  }
+
+  const athMarketCap = Math.max(
+    marketCap,
+    launchFdv,
+    athFromTrades,
+    token.metadata?.athMarketCapEth ?? 0
+  );
+
+  const holders = uniqueHolders(trades, token.address, token.bondingCurve);
+  const soldFromCurve =
+    supply > 0 && token.realTokenReserves < supply - 1
+      ? Math.max(0, supply - token.realTokenReserves)
+      : 0;
+  // If curve has sold tokens but trades weren't indexed, show at least 1 holder
+  const holdersFixed =
+    holders > 0 ? holders : soldFromCurve > 1e-6 ? 1 : 0;
+
+  const graduationEth = CHAIN_CONFIG.graduationThreshold;
+
   return {
     address: token.address,
     bondingCurve: token.bondingCurve,
@@ -281,12 +321,13 @@ export function enrichToken(
     creator: token.creator,
     createdAt: new Date(token.createdAt),
     price,
-    marketCap: price * supply,
+    marketCap,
+    athMarketCap,
     volume24h: volumeInWindow(trades, token.address, since24h),
-    holders: uniqueHolders(trades, token.address),
+    holders: holdersFixed,
     progress: token.graduated
       ? 100
-      : Math.min(100, (token.realEthReserves / 5) * 100),
+      : Math.min(100, (token.realEthReserves / graduationEth) * 100),
     graduated: token.graduated,
     priceChange24h: priceChange24h(trades, token.address, price),
     ethReserves: token.realEthReserves,

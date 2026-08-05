@@ -125,13 +125,26 @@ export function TopHoldersPanel({
               </span>
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-1.5">
+                  {h.isCurve ? (
+                    <span className="font-mono text-[12px] text-white/80">
+                      {shortenAddress(h.address, 4)}
+                    </span>
+                  ) : (
+                    <Link
+                      href={`/wallet/${h.address}`}
+                      className="font-mono text-[12px] text-white hover:text-rh-lime"
+                    >
+                      {shortenAddress(h.address, 4)}
+                    </Link>
+                  )}
                   <a
                     href={explorerAddressUrl(h.address)}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="font-mono text-[12px] text-white hover:text-rh-lime"
+                    className="text-rh-dim hover:text-rh-lime"
+                    aria-label="Open in explorer"
                   >
-                    {shortenAddress(h.address, 4)}
+                    ↗
                   </a>
                   {h.label && (
                     <span
@@ -168,6 +181,10 @@ export function TopHoldersPanel({
           ))}
         </ul>
       )}
+      <p className="mt-3 text-[10px] leading-relaxed text-rh-dim">
+        Holders = wallets with a balance. Bonding curve inventory is shown
+        separately and does not count toward the holder total.
+      </p>
     </div>
   );
 }
