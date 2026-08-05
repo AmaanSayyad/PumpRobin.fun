@@ -244,7 +244,7 @@ export function newTokenRecord(input: {
     virtualEthReserves: virtualEth,
     virtualTokenReserves: virtualTokens,
     realEthReserves: 0,
-    realTokenReserves: virtualTokens,
+    realTokenReserves: supply,
     graduated: false,
     source: input.source ?? "registry",
     txHash: input.txHash,

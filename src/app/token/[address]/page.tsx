@@ -16,6 +16,12 @@ import { ProgressBar } from "@/components/ui/progress-bar";
 import { TokenLogo } from "@/components/token-logo";
 import { TokenChart } from "@/components/token-chart";
 import {
+  SameTickerPanel,
+  TopHoldersPanel,
+  buildTopHolders,
+} from "@/components/token-holders";
+import { DEFAULT_SUPPLY } from "@/lib/curve";
+import {
   cn,
   formatEth,
   formatPriceEth,
@@ -83,6 +89,19 @@ export default function TokenPage({
         })),
     [tokenTrades]
   );
+
+  const topHolders = useMemo(() => {
+    if (!token) return [];
+    return buildTopHolders({
+      trades: tokenTrades,
+      tokenAddress: token.address,
+      bondingCurve: token.bondingCurve,
+      realTokenReserves: token.realTokenReserves,
+      creator: token.creator,
+      supply: token.metadata?.supply ?? DEFAULT_SUPPLY,
+      limit: 10,
+    });
+  }, [token, tokenTrades]);
 
   useEffect(() => {
     if (!token?.graduated || !activeWallet || !amount || Number(amount) <= 0) {
@@ -239,114 +258,116 @@ export default function TokenPage({
     <div className="rh-container py-8 sm:py-12">
       <Link
         href="/explore"
-        className="inline-flex items-center gap-2 text-sm text-rh-muted hover:text-white mb-6"
+        className="mb-6 inline-flex items-center gap-2 text-sm text-rh-muted hover:text-white"
       >
-        <ArrowLeft className="w-4 h-4" />
+        <ArrowLeft className="h-4 w-4" />
         Explore
       </Link>
 
-      <div className="grid items-start gap-8 lg:grid-cols-[1fr_360px]">
-        <div className="relative z-0 space-y-4">
-          <div className="flex items-start gap-4">
-            <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-2xl border border-rh-raised bg-rh-raised">
-              <TokenLogo
-                src={token.imageUri}
-                alt={token.name}
-                symbol={token.symbol}
-              />
-            </div>
-            <div className="min-w-0 flex-1">
-              <div className="flex flex-wrap items-center gap-2">
-                <h1 className="rh-display text-3xl sm:text-4xl">{token.name}</h1>
-                <span className="text-rh-muted">${token.symbol}</span>
-                <a
-                  href={dexUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 text-xs text-rh-lime hover:underline"
-                >
-                  DEX Screener <ExternalLink className="h-3 w-3" />
-                </a>
-                <a
-                  href={gmgnUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 text-xs text-rh-muted hover:text-rh-lime hover:underline"
-                >
-                  GMGN <ExternalLink className="h-3 w-3" />
-                </a>
-              </div>
-
-              <div className="mt-2 flex flex-wrap items-center gap-2">
-                <p className="text-[10px] uppercase tracking-wider text-rh-dim">
-                  Token CA
-                </p>
-                <code className="break-all font-mono text-[12px] text-white sm:text-[13px]">
-                  {token.address}
-                </code>
-                <button
-                  type="button"
-                  aria-label="Copy token address"
-                  className="rounded-lg p-1.5 text-rh-muted transition-colors hover:bg-white/10 hover:text-white"
-                  onClick={() => void copyText(token.address, "ca")}
-                >
-                  {copied === "ca" ? (
-                    <Check className="h-3.5 w-3.5 text-rh-lime" />
-                  ) : (
-                    <Copy className="h-3.5 w-3.5" />
-                  )}
-                </button>
-                <a
-                  href={explorerAddressUrl(token.address)}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 text-[11px] text-rh-lime hover:underline"
-                >
-                  Explorer <ExternalLink className="h-3 w-3" />
-                </a>
-              </div>
-
-              {token.bondingCurve && (
-                <div className="mt-1.5 flex flex-wrap items-center gap-2">
-                  <p className="text-[10px] uppercase tracking-wider text-rh-dim">
-                    Curve
-                  </p>
-                  <code className="break-all font-mono text-[11px] text-white/70">
-                    {shortenAddress(token.bondingCurve, 6)}
-                  </code>
-                  <button
-                    type="button"
-                    aria-label="Copy bonding curve address"
-                    className="rounded-lg p-1 text-rh-muted transition-colors hover:bg-white/10 hover:text-white"
-                    onClick={() => void copyText(token.bondingCurve, "curve")}
-                  >
-                    {copied === "curve" ? (
-                      <Check className="h-3 w-3 text-rh-lime" />
-                    ) : (
-                      <Copy className="h-3 w-3" />
-                    )}
-                  </button>
-                </div>
-              )}
-
-              {token.txHash && (
-                <a
-                  href={explorerTxUrl(token.txHash)}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="mt-1 inline-flex items-center gap-1 text-[11px] text-rh-dim hover:text-rh-lime"
-                >
-                  Launch tx {shortenAddress(token.txHash, 6)}{" "}
-                  <ExternalLink className="h-3 w-3" />
-                </a>
-              )}
-
-              <p className="mt-2 text-sm text-rh-muted">
-                {formatPriceEth(token.price)}
-              </p>
-            </div>
+      {/* Header — full width */}
+      <div className="mb-6 flex items-start gap-4">
+        <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-2xl border border-rh-raised bg-rh-raised sm:h-[72px] sm:w-[72px]">
+          <TokenLogo
+            src={token.imageUri}
+            alt={token.name}
+            symbol={token.symbol}
+          />
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <h1 className="rh-display text-3xl sm:text-4xl">{token.name}</h1>
+            <span className="text-rh-muted">${token.symbol}</span>
+            <a
+              href={gmgnUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 text-xs text-rh-lime hover:underline"
+            >
+              GMGN <ExternalLink className="h-3 w-3" />
+            </a>
+            <a
+              href={dexUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 text-xs text-rh-muted hover:text-rh-lime hover:underline"
+            >
+              DEX Screener <ExternalLink className="h-3 w-3" />
+            </a>
           </div>
 
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <p className="text-[10px] uppercase tracking-wider text-rh-dim">
+              Token CA
+            </p>
+            <code className="break-all font-mono text-[12px] text-white sm:text-[13px]">
+              {token.address}
+            </code>
+            <button
+              type="button"
+              aria-label="Copy token address"
+              className="rounded-lg p-1.5 text-rh-muted transition-colors hover:bg-white/10 hover:text-white"
+              onClick={() => void copyText(token.address, "ca")}
+            >
+              {copied === "ca" ? (
+                <Check className="h-3.5 w-3.5 text-rh-lime" />
+              ) : (
+                <Copy className="h-3.5 w-3.5" />
+              )}
+            </button>
+            <a
+              href={explorerAddressUrl(token.address)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 text-[11px] text-rh-lime hover:underline"
+            >
+              Explorer <ExternalLink className="h-3 w-3" />
+            </a>
+          </div>
+
+          {token.bondingCurve && (
+            <div className="mt-1.5 flex flex-wrap items-center gap-2">
+              <p className="text-[10px] uppercase tracking-wider text-rh-dim">
+                Curve
+              </p>
+              <code className="break-all font-mono text-[11px] text-white/70">
+                {shortenAddress(token.bondingCurve, 6)}
+              </code>
+              <button
+                type="button"
+                aria-label="Copy bonding curve address"
+                className="rounded-lg p-1 text-rh-muted transition-colors hover:bg-white/10 hover:text-white"
+                onClick={() => void copyText(token.bondingCurve, "curve")}
+              >
+                {copied === "curve" ? (
+                  <Check className="h-3 w-3 text-rh-lime" />
+                ) : (
+                  <Copy className="h-3 w-3" />
+                )}
+              </button>
+            </div>
+          )}
+
+          {token.txHash && (
+            <a
+              href={explorerTxUrl(token.txHash)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-1 inline-flex items-center gap-1 text-[11px] text-rh-dim hover:text-rh-lime"
+            >
+              Launch tx {shortenAddress(token.txHash, 6)}{" "}
+              <ExternalLink className="h-3 w-3" />
+            </a>
+          )}
+
+          <p className="mt-2 text-sm text-rh-muted">
+            {formatPriceEth(token.price)}
+          </p>
+        </div>
+      </div>
+
+      {/* Main split: chart + activity | trade + holders + same ticker */}
+      <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_380px] xl:gap-8">
+        <div className="relative z-0 min-w-0 space-y-4">
           <TokenChart
             tokenAddress={token.address}
             poolAddress={poolFromMeta}
@@ -354,15 +375,15 @@ export default function TokenPage({
             chartData={chartData}
           />
 
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-px bg-rh-raised">
+          <div className="grid grid-cols-2 gap-px bg-rh-raised sm:grid-cols-4">
             {[
               { label: "Market cap", value: `${formatEth(token.marketCap)} ETH` },
               { label: "24h volume", value: `${formatEth(token.volume24h)} ETH` },
-              { label: "Holders", value: String(token.holders) },
+              { label: "Holders", value: String(Math.max(token.holders, topHolders.filter((h) => !h.isCurve).length)) },
               { label: "ETH reserves", value: `${formatEth(token.ethReserves)} ETH` },
             ].map((s) => (
               <div key={s.label} className="bg-black p-4 text-center">
-                <p className="text-xs text-rh-muted mb-1">{s.label}</p>
+                <p className="mb-1 text-xs text-rh-muted">{s.label}</p>
                 <p className="text-sm font-medium">{s.value}</p>
               </div>
             ))}
@@ -370,7 +391,7 @@ export default function TokenPage({
 
           <div className="border border-rh-raised p-5">
             <ProgressBar value={token.progress} graduated={token.graduated} />
-            <p className="text-xs text-rh-dim mt-2">
+            <p className="mt-2 text-xs text-rh-dim">
               {token.graduated
                 ? "Graduated — Uniswap V3 1% TOKEN/WETH · LP locked. Trade via Uniswap routing."
                 : `${formatEth(CHAIN_CONFIG.graduationThreshold - token.ethReserves)} ETH until graduation`}
@@ -378,43 +399,58 @@ export default function TokenPage({
           </div>
 
           <div className="border border-rh-raised p-5">
-            <h3 className="font-medium mb-4">Recent trades</h3>
+            <h3 className="mb-4 font-medium">Recent trades</h3>
             {tokenTrades.length === 0 ? (
               <p className="text-sm text-rh-dim">No trades yet.</p>
             ) : (
-              <div className="space-y-2 max-h-64 overflow-y-auto">
+              <div className="max-h-72 space-y-2 overflow-y-auto">
                 {tokenTrades.map((trade) => (
                   <div
                     key={trade.id}
-                    className="flex items-center justify-between py-2 border-b border-rh-raised/50 text-sm last:border-0"
+                    className="flex items-center justify-between border-b border-rh-raised/50 py-2 text-sm last:border-0"
                   >
                     <div className="flex items-center gap-2">
                       {trade.isBuy ? (
-                        <ArrowUpRight className="w-4 h-4 text-rh-lime" />
+                        <ArrowUpRight className="h-4 w-4 text-rh-lime" />
                       ) : (
-                        <ArrowDownRight className="w-4 h-4 text-red-400" />
+                        <ArrowDownRight className="h-4 w-4 text-red-400" />
                       )}
-                      <span className={trade.isBuy ? "text-rh-lime" : "text-red-400"}>
+                      <span
+                        className={
+                          trade.isBuy ? "text-rh-lime" : "text-red-400"
+                        }
+                      >
                         {trade.isBuy ? "Buy" : "Sell"}
                       </span>
-                      <span className="text-rh-dim font-mono">
+                      <span className="font-mono text-rh-dim">
                         {shortenAddress(trade.trader)}
                       </span>
                     </div>
                     <div className="text-right">
                       <p>{formatEth(trade.ethAmount)} ETH</p>
-                      <p className="text-xs text-rh-dim">{timeAgo(trade.timestamp)}</p>
+                      <p className="text-xs text-rh-dim">
+                        {timeAgo(trade.timestamp)}
+                      </p>
                     </div>
                   </div>
                 ))}
               </div>
             )}
           </div>
+
+          {/* Same ticker — show under chart on mobile; duplicated in sidebar on xl via order */}
+          <div className="xl:hidden">
+            <SameTickerPanel
+              symbol={token.symbol}
+              tokens={tokens}
+              currentAddress={token.address}
+            />
+          </div>
         </div>
 
-        <aside className="space-y-4 lg:sticky lg:top-24 lg:z-20 lg:self-start">
+        <aside className="space-y-4 xl:sticky xl:top-24 xl:z-20 xl:self-start">
           <div className="relative isolate overflow-hidden border border-rh-raised bg-black p-5 shadow-[0_0_0_1px_rgba(0,0,0,1)]">
-            <div className="flex rounded-full overflow-hidden border border-rh-raised mb-4">
+            <div className="mb-4 flex overflow-hidden rounded-full border border-rh-raised">
               <button
                 type="button"
                 onClick={() => {
@@ -424,7 +460,9 @@ export default function TokenPage({
                 }}
                 className={cn(
                   "flex-1 py-2.5 text-sm font-medium",
-                  tradeMode === "buy" ? "bg-rh-lime text-rh-on-lime" : "text-rh-muted"
+                  tradeMode === "buy"
+                    ? "bg-rh-lime text-rh-on-lime"
+                    : "text-rh-muted"
                 )}
               >
                 Buy
@@ -438,14 +476,16 @@ export default function TokenPage({
                 }}
                 className={cn(
                   "flex-1 py-2.5 text-sm font-medium",
-                  tradeMode === "sell" ? "bg-white text-black" : "text-rh-muted"
+                  tradeMode === "sell"
+                    ? "bg-white text-black"
+                    : "text-rh-muted"
                 )}
               >
                 Sell
               </button>
             </div>
 
-            <label className="text-xs text-rh-muted mb-1.5 block">
+            <label className="mb-1.5 block text-xs text-rh-muted">
               {tradeMode === "buy" ? "ETH amount" : "Token amount"}
             </label>
             <input
@@ -456,10 +496,10 @@ export default function TokenPage({
                 setAmount(e.target.value);
                 setBusy(false);
               }}
-              className="w-full px-4 py-3 bg-black border border-rh-raised rounded-xl text-lg font-mono focus:outline-none focus:border-rh-lime mb-3"
+              className="mb-3 w-full rounded-xl border border-rh-raised bg-black px-4 py-3 font-mono text-lg focus:border-rh-lime focus:outline-none"
             />
 
-            <div className="flex gap-2 mb-4">
+            <div className="mb-4 flex gap-2">
               {(tradeMode === "buy"
                 ? ["0.01", "0.05", "0.1", "0.5"]
                 : ["1", "10", "100", "1000"]
@@ -471,7 +511,7 @@ export default function TokenPage({
                     setAmount(v);
                     setBusy(false);
                   }}
-                  className="flex-1 py-1.5 text-xs border border-rh-raised rounded-full hover:border-rh-lime/40 text-rh-muted"
+                  className="flex-1 rounded-full border border-rh-raised py-1.5 text-xs text-rh-muted hover:border-rh-lime/40"
                 >
                   {v}
                 </button>
@@ -547,19 +587,31 @@ export default function TokenPage({
             </p>
           </div>
 
-          <div className="relative isolate border border-rh-raised bg-black p-5 space-y-3">
+          <TopHoldersPanel holders={topHolders} />
+
+          <div className="hidden xl:block">
+            <SameTickerPanel
+              symbol={token.symbol}
+              tokens={tokens}
+              currentAddress={token.address}
+            />
+          </div>
+
+          <div className="relative isolate space-y-3 border border-rh-raised bg-black p-5">
             <div>
-              <p className="text-xs text-rh-muted mb-1">Creator</p>
-              <p className="font-mono text-sm">{shortenAddress(token.creator)}</p>
+              <p className="mb-1 text-xs text-rh-muted">Creator</p>
+              <p className="font-mono text-sm">
+                {shortenAddress(token.creator)}
+              </p>
             </div>
             <div>
-              <p className="text-xs text-rh-muted mb-1">Created</p>
+              <p className="mb-1 text-xs text-rh-muted">Created</p>
               <p className="text-sm">{timeAgo(token.createdAt)}</p>
             </div>
             {token.description && (
               <div>
-                <p className="text-xs text-rh-muted mb-1">About</p>
-                <p className="text-sm text-rh-muted leading-relaxed whitespace-pre-wrap">
+                <p className="mb-1 text-xs text-rh-muted">About</p>
+                <p className="whitespace-pre-wrap text-sm leading-relaxed text-rh-muted">
                   {token.description}
                 </p>
               </div>

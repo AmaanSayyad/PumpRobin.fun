@@ -21,7 +21,13 @@ type TokenChartProps = {
   chartData: ChartPoint[];
 };
 
-type Tab = "dex" | "gmgn" | "curve";
+type Tab = "gmgn" | "dex" | "curve";
+
+/** GMGN public embed — https://docs.gmgn.ai/index/cooperation-api-integrate-gmgn-price-chart */
+function gmgnKlineEmbed(tokenAddress: string) {
+  const ca = tokenAddress.toLowerCase();
+  return `https://www.gmgn.cc/kline/robinhood/${ca}?theme=dark&interval=5`;
+}
 
 export function TokenChart({
   tokenAddress,
@@ -29,16 +35,17 @@ export function TokenChart({
   graduated,
   chartData,
 }: TokenChartProps) {
-  const [tab, setTab] = useState<Tab>("dex");
+  const [tab, setTab] = useState<Tab>("gmgn");
 
   const chartTarget = (poolAddress || tokenAddress).toLowerCase();
   const dexPage = `https://dexscreener.com/robinhood/${chartTarget}`;
   const dexEmbed = `${dexPage}?embed=1&theme=dark&trades=0&info=0`;
   const gmgnPage = `https://gmgn.ai/robinhood/token/${tokenAddress}`;
+  const gmgnEmbed = gmgnKlineEmbed(tokenAddress);
 
   const tabs: Array<{ id: Tab; label: string }> = [
-    { id: "dex", label: "DEX Screener" },
     { id: "gmgn", label: "GMGN" },
+    { id: "dex", label: "DEX Screener" },
     { id: "curve", label: "Curve" },
   ];
 
@@ -64,25 +71,44 @@ export function TokenChart({
         </div>
         <div className="flex items-center gap-3">
           <a
-            href={dexPage}
+            href={gmgnPage}
             target="_blank"
             rel="noopener noreferrer"
             className="inline-flex items-center gap-1 text-[11px] text-rh-lime hover:underline"
           >
-            Open DEX Screener <ExternalLink className="h-3 w-3" />
+            Open GMGN <ExternalLink className="h-3 w-3" />
           </a>
           <a
-            href={gmgnPage}
+            href={dexPage}
             target="_blank"
             rel="noopener noreferrer"
             className="inline-flex items-center gap-1 text-[11px] text-rh-muted hover:text-rh-lime hover:underline"
           >
-            Open GMGN <ExternalLink className="h-3 w-3" />
+            DEX Screener <ExternalLink className="h-3 w-3" />
           </a>
         </div>
       </div>
 
-      <div className="relative h-[420px] bg-black sm:h-[480px]">
+      <div className="relative h-[380px] bg-black sm:h-[460px] lg:h-[520px]">
+        {tab === "gmgn" && (
+          <>
+            <iframe
+              title="GMGN price chart"
+              src={gmgnEmbed}
+              className="h-full w-full border-0"
+              allow="clipboard-write; clipboard-read"
+              loading="lazy"
+              referrerPolicy="no-referrer-when-downgrade"
+            />
+            {!graduated && (
+              <p className="pointer-events-none absolute bottom-3 left-3 right-3 rounded-lg bg-black/80 px-3 py-2 text-center text-[11px] text-rh-muted">
+                Pre-graduation: GMGN fills once the token has indexed trades /
+                pool data. Use Curve tab for PumpRobin buys in the meantime.
+              </p>
+            )}
+          </>
+        )}
+
         {tab === "dex" && (
           <>
             <iframe
@@ -94,43 +120,17 @@ export function TokenChart({
             />
             {!graduated && (
               <p className="pointer-events-none absolute bottom-3 left-3 right-3 rounded-lg bg-black/75 px-3 py-2 text-center text-[11px] text-rh-muted">
-                DEX Screener / GMGN charts need a Uniswap pool. Buy on the curve
-                until ~8 ETH — then the token graduates and the chart fills in.
+                DEX Screener needs a Uniswap pool — charts after ~8 ETH
+                graduation.
               </p>
             )}
           </>
         )}
 
-        {tab === "gmgn" && (
-          <div className="flex h-full flex-col items-center justify-center gap-4 px-6 text-center">
-            <p className="max-w-md text-sm text-rh-muted">
-              GMGN blocks embedded charts. Open the token there for smart-money
-              flow, holders, and live tape.
-            </p>
-            <a
-              href={gmgnPage}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 rounded-full bg-rh-lime px-5 py-2.5 text-sm font-semibold text-rh-on-lime"
-            >
-              Open on GMGN <ExternalLink className="h-4 w-4" />
-            </a>
-            <a
-              href={dexPage}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-xs text-rh-dim hover:text-rh-lime hover:underline"
-            >
-              Or view on DEX Screener
-            </a>
-          </div>
-        )}
-
         {tab === "curve" &&
           (chartData.length < 2 ? (
             <p className="flex h-full items-center justify-center px-6 text-center text-sm text-rh-dim">
-              PumpRobin curve chart appears after the first buy/sell on this
-              page.
+              Curve chart appears after the first buy/sell on PumpRobin.
             </p>
           ) : (
             <div className="h-full p-4">
