@@ -48,7 +48,7 @@ contract PumpRobinToken is ERC20, Ownable {
         address creator_,
         bool antiSnipeEnabled_,
         address antiSnipeFeeRecipient_
-    ) ERC20(name_, symbol_) Ownable(creator_) {
+    ) ERC20(name_, symbol_) Ownable(msg.sender) {
         require(creator_ != address(0), "Bad creator");
         if (antiSnipeEnabled_) {
             require(antiSnipeFeeRecipient_ != address(0), "Fee recipient required");
@@ -69,7 +69,7 @@ contract PumpRobinToken is ERC20, Ownable {
         }
 
         _mint(msg.sender, 1_000_000_000 * 10 ** decimals());
-        // Match Bags-style audit: no privileged owner after launch
+        // Factory is temporary owner so renounce works in this constructor
         renounceOwnership();
     }
 
