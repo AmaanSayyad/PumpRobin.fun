@@ -47,7 +47,7 @@ import {
   ExternalLink,
   Globe,
 } from "lucide-react";
-import { creatorEmoji } from "@/components/tokens/token-card";
+import { CreatorIcon } from "@/components/creator-icon";
 
 function normalizeHref(url?: string): string | null {
   if (!url?.trim()) return null;
@@ -497,9 +497,10 @@ export default function TokenPage({
             <Link
               href={`/wallet/${token.creator}`}
               title="Creator"
-              className="ml-auto flex h-8 w-8 items-center justify-center rounded-full bg-white/5 text-base leading-none hover:bg-rh-lime/20 sm:ml-0"
+              aria-label="Creator profile"
+              className="rounded-md p-1.5 text-rh-muted hover:bg-white/5 hover:text-rh-lime sm:ml-0"
             >
-              <span aria-hidden>{creatorEmoji(token.creator)}</span>
+              <CreatorIcon />
             </Link>
           </div>
 
@@ -853,8 +854,8 @@ export default function TokenPage({
                 href={`/wallet/${token.creator}`}
                 className="inline-flex items-center gap-2 text-sm text-rh-lime hover:underline"
               >
-                <span className="flex h-7 w-7 items-center justify-center rounded-full bg-white/5 text-sm leading-none">
-                  {creatorEmoji(token.creator)}
+                <span className="flex h-7 w-7 items-center justify-center rounded-md bg-white/5 text-rh-muted">
+                  <CreatorIcon className="h-3.5 w-3.5" />
                 </span>
                 Creator profile
               </Link>
