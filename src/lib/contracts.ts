@@ -35,6 +35,13 @@ export const PUMP_ROBIN_FACTORY_ABI = [
   },
   {
     type: "function",
+    name: "minSeedLiquidity",
+    inputs: [],
+    outputs: [{ name: "", type: "uint256" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
     name: "getAllTokens",
     inputs: [],
     outputs: [{ name: "", type: "address[]" }],
@@ -78,6 +85,16 @@ export const BONDING_CURVE_ABI = [
       { name: "creator", type: "address", indexed: true },
       { name: "amount", type: "uint256", indexed: false },
     ],
+  },
+  {
+    type: "function",
+    name: "seedAndGraduate",
+    inputs: [
+      { name: "recipient", type: "address" },
+      { name: "minTokensOut", type: "uint256" },
+    ],
+    outputs: [],
+    stateMutability: "payable",
   },
   {
     type: "function",

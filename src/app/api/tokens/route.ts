@@ -25,6 +25,9 @@ export async function POST(request: Request) {
     txHash,
     source,
     metadata,
+    graduated,
+    uniswapPool,
+    realEthReserves,
   } = body;
 
   if (!name || !symbol || !creator) {
@@ -46,6 +49,10 @@ export async function POST(request: Request) {
     bondingCurve,
     txHash,
     source: source === "onchain" ? "onchain" : "registry",
+    graduated: Boolean(graduated),
+    uniswapPool: uniswapPool ? String(uniswapPool) : undefined,
+    realEthReserves:
+      typeof realEthReserves === "number" ? realEthReserves : undefined,
     metadata: {
       ...pickSocialMetadata(meta),
       bannerUri: meta.bannerUri ? String(meta.bannerUri) : undefined,
@@ -61,11 +68,11 @@ export async function POST(request: Request) {
       feeSharing: Boolean(meta.feeSharing),
       feeShares: Array.isArray(meta.feeShares)
         ? meta.feeShares
-            .map((s) => ({
+            .map((s: { address?: string; pct?: number }) => ({
               address: String(s?.address || "").trim(),
               pct: Number(s?.pct) || 0,
             }))
-            .filter((s) => s.address && s.pct > 0)
+            .filter((s: { address: string; pct: number }) => s.address && s.pct > 0)
             .slice(0, 100)
         : undefined,
     },

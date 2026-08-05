@@ -480,6 +480,8 @@ export default function LaunchPage() {
     const pending = pendingLaunch.current;
     let tokenAddress: string | undefined;
     let bondingCurve: string | undefined;
+    let uniswapPool: string | undefined;
+    let lpEth = 0;
 
     for (const log of receipt.logs) {
       try {
@@ -502,9 +504,30 @@ export default function LaunchPage() {
       }
     }
 
+    for (const log of receipt.logs) {
+      try {
+        const decoded = decodeEventLog({
+          abi: BONDING_CURVE_ABI,
+          data: log.data,
+          topics: log.topics,
+        });
+        if (decoded.eventName === "Graduated") {
+          const args = decoded.args as {
+            pool: `0x${string}`;
+            ethLiquidity: bigint;
+          };
+          uniswapPool = args.pool;
+          lpEth = Number(formatEther(args.ethLiquidity));
+          break;
+        }
+      } catch {
+        /* not Graduated */
+      }
+    }
+
     void (async () => {
       try {
-        // Decode bags-style first buy from the same create tx (if any)
+        // Decode Bags-style creator buy (post-pool swap) from the same create tx
         let launchTrade: {
           ethAmount: number;
           tokenAmount: number;
@@ -557,13 +580,9 @@ export default function LaunchPage() {
             txHash: hash,
             source: "onchain",
             metadata: pending.metadata,
-            ...(launchTrade
-              ? {
-                  realEthReserves:
-                    launchTrade.ethAmount *
-                    (1 - CHAIN_CONFIG.tradeFeeBps / 10_000),
-                }
-              : {}),
+            graduated: Boolean(uniswapPool),
+            uniswapPool,
+            realEthReserves: lpEth || undefined,
           }),
         });
         const data = await res.json();
@@ -583,9 +602,7 @@ export default function LaunchPage() {
 
         if (launchTrade && finalAddress && address) {
           try {
-            const ethAfterFee =
-              launchTrade.ethAmount *
-              (1 - CHAIN_CONFIG.tradeFeeBps / 10_000);
+            const ethAfterFee = launchTrade.ethAmount;
             const sync = await fetch("/api/trades/sync", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
@@ -596,14 +613,16 @@ export default function LaunchPage() {
                 ethAmount: launchTrade.ethAmount,
                 tokenAmount: launchTrade.tokenAmount,
                 price: launchTrade.price,
-                feeEth: launchTrade.ethAmount - ethAfterFee,
+                feeEth: 0,
                 txHash: hash,
                 virtualEthReserves: INITIAL_VIRTUAL_ETH + ethAfterFee,
                 virtualTokenReserves:
                   INITIAL_VIRTUAL_TOKENS - launchTrade.tokenAmount,
-                realEthReserves: ethAfterFee,
+                realEthReserves: lpEth || ethAfterFee,
                 realTokenReserves:
                   DEFAULT_SUPPLY - launchTrade.tokenAmount,
+                graduated: true,
+                uniswapPool,
               }),
             });
             const syncData = await sync.json();
@@ -628,6 +647,18 @@ export default function LaunchPage() {
             }
           } catch {
             /* index best-effort */
+          }
+        }
+
+        // Best-effort on-chain refresh so pool + graduated flags stick
+        if (finalAddress) {
+          try {
+            await fetch(`/api/tokens/${finalAddress}/refresh`, {
+              method: "POST",
+            });
+            await refreshTokens();
+          } catch {
+            /* ignore */
           }
         }
 
@@ -788,9 +819,9 @@ export default function LaunchPage() {
       return;
     }
 
-    if (buyEthNum <= 0) {
+    if (buyEthNum < Number(CHAIN_CONFIG.minSeedLiquidityEth)) {
       setError(
-        "Set ownership / first buy (ETH) — Bags-style launches include a creator buy so GMGN shows liq + chart."
+        `Set initial liquidity / first buy to at least ${CHAIN_CONFIG.minSeedLiquidityEth} ETH so a Uniswap pool is seeded and GMGN can chart it.`
       );
       return;
     }
@@ -1342,11 +1373,10 @@ export default function LaunchPage() {
               </div>
 
               <p className="mt-3 text-[11px] leading-relaxed text-rh-dim">
-                Cost follows the bonding curve ({INITIAL_VIRTUAL_ETH} ETH × 1.073B virtual
-                reserves) plus the {CHAIN_CONFIG.creatorFeeBps / 100}% creator +{" "}
-                {CHAIN_CONFIG.platformFeeBps / 100}% platform trade fee —
-                same math as the on-chain buy. Spot FDV × % underestimates because price rises
-                as you buy.
+                Your ETH seeds a Uniswap V3 TOKEN/WETH pool (1% fee, LP locked forever)
+                so GMGN and DEX Screener can chart from block 0. About half seeds
+                liquidity; the rest buys you tokens in the same tx. Plus the{" "}
+                {CHAIN_CONFIG.creationFee} ETH creation fee.
               </p>
 
               <div className="mt-3 rounded-2xl border border-amber-400/20 bg-gradient-to-r from-amber-500/15 to-amber-500/5 px-4 py-3.5 text-sm leading-snug text-amber-100/95">

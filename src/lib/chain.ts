@@ -75,12 +75,16 @@ export const CHAIN_CONFIG = {
   alertsSubEth: "0.028",
   alertsSubUsdHint: 50,
   alertsSubDays: 30,
-  /** ~8 ETH ≈ $30k LP at graduate — clears DEX Screener minLiq≈$25k filters */
-  graduationThreshold: 8, // ETH
-  /** Bonding-curve trade fees (of trade volume) */
-  creatorFeeBps: 100, // 1% → CREATOR_FEE_COLLECTOR on each trade
-  platformFeeBps: 30, // 0.3% → FEE_COLLECTOR on each trade
-  /** Total taken from buys/sells before curve math (= creator + platform) */
+  /** Min ETH that seeds the Uniswap V3 pool at launch (shown on GMGN) */
+  minSeedLiquidityEth: "0.01",
+  /**
+   * @deprecated Launches now seed Uniswap immediately; kept for copy fallbacks.
+   * ~8 ETH was the old bonding-curve graduation threshold.
+   */
+  graduationThreshold: 8, // ETH (legacy)
+  /** Bonding-curve trade fees (legacy pre-grad curves only) */
+  creatorFeeBps: 100,
+  platformFeeBps: 30,
   tradeFeeBps: 130, // 1.3%
   totalSupply: 1_000_000_000,
   decimals: 18,

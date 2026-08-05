@@ -216,6 +216,9 @@ export function newTokenRecord(input: {
   source?: "registry" | "onchain";
   txHash?: string;
   metadata?: LaunchMetadata;
+  graduated?: boolean;
+  uniswapPool?: string | null;
+  realEthReserves?: number;
 }): TokenRecord {
   const id = Date.now().toString(16);
   const supply = Math.max(1, Math.min(1e15, input.metadata?.supply ?? DEFAULT_SUPPLY));
@@ -225,6 +228,9 @@ export function newTokenRecord(input: {
     ...(input.metadata ?? {}),
     supply,
     decimals: input.metadata?.decimals ?? 18,
+    ...(input.uniswapPool
+      ? { uniswapPool: String(input.uniswapPool).toLowerCase() }
+      : {}),
   };
   return {
     address: (input.address ?? (`0x${id.padStart(40, "0")}`)).toLowerCase(),
@@ -243,9 +249,9 @@ export function newTokenRecord(input: {
     createdAt: new Date().toISOString(),
     virtualEthReserves: virtualEth,
     virtualTokenReserves: virtualTokens,
-    realEthReserves: 0,
-    realTokenReserves: supply,
-    graduated: false,
+    realEthReserves: input.realEthReserves ?? 0,
+    realTokenReserves: input.graduated ? 0 : supply,
+    graduated: Boolean(input.graduated),
     source: input.source ?? "registry",
     txHash: input.txHash,
     metadata,

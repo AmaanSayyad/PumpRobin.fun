@@ -6,20 +6,19 @@ import "./BondingCurve.sol";
 
 /**
  * @title PumpRobinFactory
- * @notice Factory for tokens + bonding curves on Robinhood Chain.
- * @dev Matches Bags createAndBuy: send creation fee + optional buy ETH in one tx.
- *      Excess over CREATION_FEE buys on the new curve for the creator.
+ * @notice Factory for tokens that launch straight into a Uniswap V3 pool.
+ * @dev createToken: creation fee + seed ETH (≥ MIN_SEED). Excess seeds locked
+ *      LP and optionally buys for the creator in the same tx (Bags create+buy).
  */
 contract PumpRobinFactory {
     uint256 public constant CREATION_FEE = 0.0005 ether;
-    /// @dev Same AMM as bags.fm / pump.fun (virtual constant-product). Bags on Robinhood
-    ///      calibrates ~1.3 ETH virtual → start FDV ~$2.3k so 0.044 ETH ≈ 3.5% supply.
-    ///      (30 ETH was Solana-pump scaled wrong for $1.8k ETH.)
+    /// @dev Kept for UI / legacy quote helpers (virtual curve no longer used at launch)
     uint256 public constant INITIAL_VIRTUAL_ETH = 1.3 ether;
     uint256 public constant INITIAL_VIRTUAL_TOKENS = 1_073_000_000 * 1e18;
+    /// @dev Must match BondingCurve.MIN_SEED — Uniswap pool needs real ETH side
+    uint256 public constant MIN_SEED_LIQUIDITY = 0.01 ether;
 
     address public owner;
-    /// @notice Receives creation fees and platform trade-fee share
     address public feeCollector;
     address[] public allTokens;
     mapping(address => address) public tokenToCurve;
@@ -47,7 +46,7 @@ contract PumpRobinFactory {
         string calldata imageUri,
         string calldata description
     ) external payable returns (address token, address bondingCurve) {
-        require(msg.value >= CREATION_FEE, "Insufficient fee");
+        require(msg.value >= CREATION_FEE + MIN_SEED_LIQUIDITY, "Need seed liquidity");
         require(bytes(name).length > 0, "Name required");
         require(bytes(symbol).length > 0, "Symbol required");
 
@@ -68,7 +67,6 @@ contract PumpRobinFactory {
             INITIAL_VIRTUAL_TOKENS
         );
 
-        // Transfer all tokens to bonding curve
         uint256 supply = newToken.totalSupply();
         newToken.transfer(address(curve), supply);
 
@@ -81,16 +79,12 @@ contract PumpRobinFactory {
 
         emit TokenCreated(token, bondingCurve, msg.sender, name, symbol, imageUri);
 
-        // Forward creation fee to collector
         (bool feeSent, ) = feeCollector.call{value: CREATION_FEE}("");
         require(feeSent, "Fee transfer failed");
 
-        // Bags-style createAndBuy: any ETH above the creation fee buys on the curve
-        // for the creator in the same transaction (no second wallet confirm).
-        uint256 buyEth = msg.value - CREATION_FEE;
-        if (buyEth > 0) {
-            curve.buyFor{value: buyEth}(msg.sender, 0);
-        }
+        // Seed Uniswap V3 pool + optional creator buy in one shot
+        uint256 seedEth = msg.value - CREATION_FEE;
+        curve.seedAndGraduate{value: seedEth}(msg.sender, 0);
     }
 
     function setFeeCollector(address next) external {
@@ -111,6 +105,10 @@ contract PumpRobinFactory {
 
     function creationFee() external pure returns (uint256) {
         return CREATION_FEE;
+    }
+
+    function minSeedLiquidity() external pure returns (uint256) {
+        return MIN_SEED_LIQUIDITY;
     }
 
     receive() external payable {}

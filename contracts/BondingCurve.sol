@@ -10,26 +10,31 @@ import "./libraries/SqrtPriceMath.sol";
 
 /**
  * @title BondingCurve
- * @notice Constant-product AMM bonding curve for PumpRobin.fun
- * @dev Inspired by pump.fun: virtual reserves, then graduate to Uniswap V3 (1% fee) on Robinhood Chain
+ * @notice Launch vault: seeds a Uniswap V3 TOKEN/WETH pool (1%) at create time so
+ *         GMGN / DEX Screener / Uniswap index liquidity immediately.
+ * @dev Legacy buy/sell curve functions remain but revert after graduation. New
+ *      launches call seedAndGraduate from the factory in the same create tx.
  */
 contract BondingCurve is ReentrancyGuard {
     /// @dev Robinhood Chain Uniswap V3 + WETH (canonical deployments)
     address public constant WETH = 0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73;
     address public constant UNISWAP_V3_FACTORY = 0x1f7d7550B1b028f7571E69A784071F0205FD2EfA;
     address public constant POSITION_MANAGER = 0x73991a25C818Bf1f1128dEAaB1492D45638DE0D3;
-    /// @dev Matches VLAD-style Robinhood memecoin pools on DEX Screener
+    address public constant SWAP_ROUTER = 0xCaf681a66D020601342297493863E78C959E5cb2;
+    /// @dev Matches VLAD-style Robinhood memecoin pools on DEX Screener / GMGN
     uint24 public constant POOL_FEE = 10_000; // 1%
     int24 public constant TICK_LOWER = -887_200; // full-range for tickSpacing 200
     int24 public constant TICK_UPPER = 887_200;
     address public constant LP_DEAD = 0x000000000000000000000000000000000000dEaD;
+    /// @dev Minimum ETH that must seed the Uniswap pool (indexers need real liq)
+    uint256 public constant MIN_SEED = 0.01 ether;
 
     PumpRobinToken public immutable token;
     address public immutable creator;
     address public immutable factory;
-    /// @notice Receives the 0.3% platform cut of every bonding-curve trade
+    /// @notice Receives dust / platform residual ETH
     address public immutable platformFeeRecipient;
-    /// @notice Receives the 1% creator-fee share of every bonding-curve trade
+    /// @notice Legacy constant (curve trade fees no longer used post day-0 pool)
     address public constant CREATOR_FEE_RECIPIENT =
         0x4654FE1e59547372Db57e9F6865aa7aC3A0C77a3;
 
@@ -38,12 +43,10 @@ contract BondingCurve is ReentrancyGuard {
     uint256 public realEthReserves;
     uint256 public realTokenReserves;
     uint256 public constant TOTAL_SUPPLY = 1_000_000_000 * 1e18;
-    /// @dev ~8 ETH real ≈ ~$30k dual-sided LP — clears common DEX Screener minLiq=$25k filters
     uint256 public constant GRADUATION_THRESHOLD = 8 ether;
-    /// @dev Total trade fee = creator 1% + platform 0.3%
-    uint256 public constant CREATOR_FEE_BPS = 100; // 1%
-    uint256 public constant PLATFORM_FEE_BPS = 30; // 0.3%
-    uint256 public constant FEE_BPS = CREATOR_FEE_BPS + PLATFORM_FEE_BPS; // 1.3%
+    uint256 public constant CREATOR_FEE_BPS = 100;
+    uint256 public constant PLATFORM_FEE_BPS = 30;
+    uint256 public constant FEE_BPS = CREATOR_FEE_BPS + PLATFORM_FEE_BPS;
 
     bool public graduated;
     address public uniswapPool;
@@ -73,7 +76,6 @@ contract BondingCurve is ReentrancyGuard {
         platformFeeRecipient = platformFeeRecipient_;
         virtualEthReserves = initialVirtualEth;
         virtualTokenReserves = initialVirtualTokens;
-        // Sellable supply is the minted ERC-20 amount (1B), not virtual reserves
         realTokenReserves = TOTAL_SUPPLY;
 
         IERC20(token_).approve(factory_, type(uint256).max);
@@ -89,19 +91,54 @@ contract BondingCurve is ReentrancyGuard {
         return (realEthReserves * 100) / GRADUATION_THRESHOLD;
     }
 
-    /// @notice Buy tokens for msg.sender (bonding-curve phase)
+    /// @notice Legacy curve buy — disabled once the Uniswap pool exists
     function buy(uint256 minTokens) external payable nonReentrant {
         _buy(msg.sender, minTokens);
     }
 
-    /// @notice Buy tokens for `recipient` — used by factory create+buy (Bags-style)
     function buyFor(address recipient, uint256 minTokens) external payable nonReentrant {
         require(recipient != address(0), "Bad recipient");
         _buy(recipient, minTokens);
     }
 
-    function _buy(address recipient, uint256 minTokens) internal {
+    /**
+     * @notice Factory-only: seed Uniswap V3 pool immediately + optional creator buy.
+     * @dev Half of msg.value seeds locked LP (floored at MIN_SEED); the rest buys
+     *      tokens for `recipient` on the new pool (Bags-style create+buy).
+     */
+    function seedAndGraduate(address recipient, uint256 minTokensOut)
+        external
+        payable
+        nonReentrant
+    {
+        require(msg.sender == factory, "Only factory");
         require(!graduated, "Graduated");
+        require(recipient != address(0), "Bad recipient");
+        require(msg.value >= MIN_SEED, "Need seed liquidity");
+
+        uint256 buyEth = msg.value / 2;
+        uint256 lpEth = msg.value - buyEth;
+        if (lpEth < MIN_SEED) {
+            lpEth = MIN_SEED;
+            require(msg.value > lpEth, "Need seed liquidity");
+            buyEth = msg.value - lpEth;
+        }
+
+        _graduateWithEth(lpEth);
+
+        if (buyEth > 0) {
+            uint256 tokensOut = _swapEthForTokens(recipient, buyEth, minTokensOut);
+            uint256 price = getPrice();
+            // Prefer pool-implied price after graduation
+            if (price == 0 && tokensOut > 0) {
+                price = (buyEth * 1e18) / tokensOut;
+            }
+            emit Trade(recipient, true, buyEth, tokensOut, price);
+        }
+    }
+
+    function _buy(address recipient, uint256 minTokens) internal {
+        require(!graduated, "Graduated - trade on Uniswap");
         require(msg.value > 0, "No ETH sent");
 
         uint256 fee = (msg.value * FEE_BPS) / 10000;
@@ -125,12 +162,12 @@ contract BondingCurve is ReentrancyGuard {
         emit Trade(recipient, true, msg.value, tokenAmount, getPrice());
 
         if (realEthReserves >= GRADUATION_THRESHOLD) {
-            _graduate();
+            _graduateWithEth(address(this).balance);
         }
     }
 
     function sell(uint256 tokenAmount, uint256 minEth) external nonReentrant {
-        require(!graduated, "Graduated");
+        require(!graduated, "Graduated - trade on Uniswap");
         require(tokenAmount > 0, "No tokens");
 
         uint256 ethReturn = _calculateSellReturn(tokenAmount);
@@ -170,7 +207,6 @@ contract BondingCurve is ReentrancyGuard {
     }
 
     function _distributeFee(uint256 fee) internal {
-        // Split total fee: 1% creator collector + 0.3% platform (both paid now)
         uint256 creatorFee = (fee * CREATOR_FEE_BPS) / FEE_BPS;
         uint256 platformFee = fee - creatorFee;
 
@@ -184,21 +220,16 @@ contract BondingCurve is ReentrancyGuard {
         }
     }
 
-    /**
-     * @dev Seed a FULL-RANGE Uniswap V3 TOKEN/WETH pool (1% fee) and permanently
-     *      lock the LP NFT at the dead address so principal cannot be withdrawn.
-     *      Full-range (not Uniswap UI "Wide" ±50/100%) is required for locked LP:
-     *      launchpad liquidity cannot be rebalanced, so the position must stay
-     *      in-range at every price. 1% fee matches Robinhood meme pool TVL.
-     */
-    function _graduate() internal {
+    function _graduateWithEth(uint256 ethLiq) internal {
+        require(!graduated, "Graduated");
+        require(ethLiq > 0, "No liquidity");
+        require(address(this).balance >= ethLiq, "Insufficient ETH");
+
         graduated = true;
 
-        uint256 ethLiq = address(this).balance;
         uint256 tokenLiq = IERC20(address(token)).balanceOf(address(this));
-        require(ethLiq > 0 && tokenLiq > 0, "No liquidity");
+        require(tokenLiq > 0, "No liquidity");
 
-        // Wrap ETH → WETH
         IWETH(WETH).deposit{value: ethLiq}();
 
         address tokenAddr = address(token);
@@ -214,7 +245,6 @@ contract BondingCurve is ReentrancyGuard {
         IERC20(token0).approve(POSITION_MANAGER, amount0);
         IERC20(token1).approve(POSITION_MANAGER, amount1);
 
-        // Mint full-range LP directly to dead address → permanent lock (no rug)
         (uint256 tokenId, , uint256 used0, uint256 used1) = npm.mint(
             INonfungiblePositionManager.MintParams({
                 token0: token0,
@@ -231,11 +261,8 @@ contract BondingCurve is ReentrancyGuard {
             })
         );
 
-        // Sweep dust: leftover tokens → dead; leftover WETH → unwrap to fee collector
-        uint256 left0 = amount0 - used0;
-        uint256 left1 = amount1 - used1;
-        _sweepDust(token0, left0);
-        _sweepDust(token1, left1);
+        _sweepDust(token0, amount0 - used0);
+        _sweepDust(token1, amount1 - used1);
 
         realEthReserves = 0;
         realTokenReserves = 0;
@@ -243,6 +270,30 @@ contract BondingCurve is ReentrancyGuard {
         lpTokenId = tokenId;
 
         emit Graduated(pool, ethLiq, tokenLiq, tokenId);
+    }
+
+    function _swapEthForTokens(
+        address recipient,
+        uint256 ethIn,
+        uint256 minTokensOut
+    ) internal returns (uint256 tokensOut) {
+        require(graduated && uniswapPool != address(0), "No pool");
+        require(address(this).balance >= ethIn, "Insufficient ETH");
+
+        IWETH(WETH).deposit{value: ethIn}();
+        IERC20(WETH).approve(SWAP_ROUTER, ethIn);
+
+        tokensOut = ISwapRouter02(SWAP_ROUTER).exactInputSingle(
+            ISwapRouter02.ExactInputSingleParams({
+                tokenIn: WETH,
+                tokenOut: address(token),
+                fee: POOL_FEE,
+                recipient: recipient,
+                amountIn: ethIn,
+                amountOutMinimum: minTokensOut,
+                sqrtPriceLimitX96: 0
+            })
+        );
     }
 
     function _sweepDust(address asset, uint256 amount) internal {
