@@ -35,7 +35,7 @@ export function TokenChart({
   graduated,
   chartData,
 }: TokenChartProps) {
-  const [tab, setTab] = useState<Tab>("gmgn");
+  const [tab, setTab] = useState<Tab>(graduated ? "gmgn" : "curve");
 
   const chartTarget = (poolAddress || tokenAddress).toLowerCase();
   const dexPage = `https://dexscreener.com/robinhood/${chartTarget}`;
@@ -44,10 +44,13 @@ export function TokenChart({
   const gmgnEmbed = gmgnKlineEmbed(tokenAddress);
 
   const tabs: Array<{ id: Tab; label: string }> = [
-    { id: "gmgn", label: "GMGN" },
-    { id: "dex", label: "DEX Screener" },
     { id: "curve", label: "Curve" },
+    { id: "gmgn", label: "GMGN" },
+    { id: "dex", label: "DEX" },
   ];
+
+  const openHref =
+    tab === "gmgn" ? gmgnPage : tab === "dex" ? dexPage : null;
 
   return (
     <div className="overflow-hidden border border-rh-raised">
@@ -69,24 +72,17 @@ export function TokenChart({
             </button>
           ))}
         </div>
-        <div className="flex items-center gap-3">
+        {openHref && (
           <a
-            href={gmgnPage}
+            href={openHref}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-1 text-[11px] text-rh-lime hover:underline"
+            className="inline-flex items-center gap-1 text-[11px] text-rh-muted hover:text-rh-lime"
           >
-            Open GMGN <ExternalLink className="h-3 w-3" />
+            Open {tab === "gmgn" ? "GMGN" : "DEX"}{" "}
+            <ExternalLink className="h-3 w-3" />
           </a>
-          <a
-            href={dexPage}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-1 text-[11px] text-rh-muted hover:text-rh-lime hover:underline"
-          >
-            DEX Screener <ExternalLink className="h-3 w-3" />
-          </a>
-        </div>
+        )}
       </div>
 
       <div className="relative h-[380px] bg-black sm:h-[460px] lg:h-[520px]">
@@ -102,8 +98,7 @@ export function TokenChart({
             />
             {!graduated && (
               <p className="pointer-events-none absolute bottom-3 left-3 right-3 rounded-lg bg-black/80 px-3 py-2 text-center text-[11px] text-rh-muted">
-                Pre-graduation: GMGN fills once the token has indexed trades /
-                pool data. Use Curve tab for PumpRobin buys in the meantime.
+                Pre-grad charts may be empty — use Curve for PumpRobin trades.
               </p>
             )}
           </>
@@ -120,8 +115,7 @@ export function TokenChart({
             />
             {!graduated && (
               <p className="pointer-events-none absolute bottom-3 left-3 right-3 rounded-lg bg-black/75 px-3 py-2 text-center text-[11px] text-rh-muted">
-                DEX Screener needs a Uniswap pool — charts after ~8 ETH
-                graduation.
+                DEX chart after ~8 ETH graduation to Uniswap.
               </p>
             )}
           </>
