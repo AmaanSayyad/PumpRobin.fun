@@ -64,6 +64,13 @@ export const CHAIN_CONFIG = {
   featureBoostEth: "0.055",
   featureBoostUsdHint: 100,
   featureBoostDays: 7,
+  /**
+   * Telegram/Discord alert subscription (~$50). Manual fulfillment by team.
+   * Paid to feeCollector; request stored for ops to activate.
+   */
+  alertsSubEth: "0.028",
+  alertsSubUsdHint: 50,
+  alertsSubDays: 30,
   /** ~8 ETH ≈ $30k LP at graduate — clears DEX Screener minLiq≈$25k filters */
   graduationThreshold: 8, // ETH
   /** Bonding-curve trade fees (of trade volume) */

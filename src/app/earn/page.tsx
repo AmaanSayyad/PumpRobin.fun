@@ -95,6 +95,27 @@ export default function EarnPage() {
       </section>
 
       <section className="py-16 sm:py-24 border-t border-rh-raised">
+        <div className="rh-container max-w-3xl mx-auto text-center">
+          <h2 className="rh-display text-3xl sm:text-4xl mb-4">Creator fees — paid automatically</h2>
+          <p className="text-rh-muted text-lg leading-relaxed mb-6">
+            You earn <span className="text-rh-lime font-medium">1%</span> of every bonding-curve
+            trade on your coin. PumpRobin takes <span className="text-white">0.3%</span>. Both
+            amounts are sent in the same transaction as the buy/sell —{" "}
+            <span className="text-white">no claim button</span>. Fees land in the creator wallet
+            you used at launch.
+          </p>
+          <div className="flex flex-wrap justify-center gap-3">
+            <RhButton href="/launch" size="lg">
+              Launch a token
+            </RhButton>
+            <RhButton href="/alerts" size="lg" variant="ghost">
+              Get alerts · $50
+            </RhButton>
+          </div>
+        </div>
+      </section>
+
+      <section className="py-16 sm:py-24 border-t border-rh-raised">
         <div className="rh-container">
           <SplitBlock
             copy={

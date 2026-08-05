@@ -52,7 +52,7 @@ export const CREATOR_FEE_CARDS = [
 
 export const CREATOR_FEES_INTRO = `Launching isn't only about going live — creators earn ${CREATOR_FEE_PCT}% of every buy and sell on their bonding curve, and PumpRobin takes ${PLATFORM_FEE_PCT}% as a platform fee (${TRADE_FEE_PCT}% total).`;
 
-export const CREATOR_FEES_BODY = `On deployed BondingCurve contracts, both fee shares are paid out on each trade (creator wallet + platform collector). Fee-share splits among multiple wallets (metadata), payout redirect, and post-graduation Uniswap LP fee collection are on the roadmap — see Roadmap for timing. Platform also earns the ${CHAIN_CONFIG.creationFee} ETH creation fee.`;
+export const CREATOR_FEES_BODY = `On deployed BondingCurve contracts, creator and platform fees are paid out automatically on every trade — there is no claim button for curve fees. ${CREATOR_FEE_PCT}% of trade volume goes to the creator wallet and ${PLATFORM_FEE_PCT}% to the platform collector in the same transaction (trader pays gas). Fee-share splits among multiple wallets, payout redirect, and post-graduation Uniswap LP fee collection are on the roadmap. Platform also earns the ${CHAIN_CONFIG.creationFee} ETH creation fee.`;
 
 export const FAIR_BY_DESIGN = [
   {

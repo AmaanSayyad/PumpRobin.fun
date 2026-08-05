@@ -18,6 +18,11 @@ export const MONETIZATION_LIVE = [
     title: "Explore feature boost",
     body: "Paid pin on Explore Featured for 7 days (~$100 in ETH). Highest-intent creator spend.",
   },
+  {
+    id: "alerts-sub",
+    title: "Telegram / Discord alerts",
+    body: "Paid subscription (~$50 / 30 days). Manual onboarding by ops into alert feeds.",
+  },
 ] as const;
 
 export const MONETIZATION_ROADMAP = [
@@ -49,7 +54,7 @@ export const MONETIZATION_ROADMAP = [
   {
     id: "alerts",
     title: "Telegram / Discord alerts",
-    body: "Subscription for whale buys, new launches, graduation alerts.",
+    body: "Live as paid subscription with manual fulfillment — see /alerts.",
   },
   {
     id: "grad-lp-share",
