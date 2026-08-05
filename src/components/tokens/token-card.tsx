@@ -104,7 +104,6 @@ export function TokenCard({ token, index = 0 }: TokenCardProps) {
   const telegram = normalizeHref(token.metadata?.telegram);
   const discord = normalizeHref(token.metadata?.discord);
   const hasSocials = Boolean(website || twitter || telegram || discord);
-  const emoji = creatorEmoji(token.creator);
 
   return (
     <motion.div
@@ -160,77 +159,65 @@ export function TokenCard({ token, index = 0 }: TokenCardProps) {
         </div>
       </Link>
 
-      <div className="flex items-center justify-between gap-2 border-t border-rh-raised/60 px-5 py-2.5">
-        <div className="flex min-w-0 items-center gap-1.5">
-          {hasSocials ? (
-            <>
-              {website && (
-                <a
-                  href={website}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  title="Website"
-                  aria-label={`${token.symbol} website`}
-                  className="rounded-md p-1.5 text-rh-muted transition-colors hover:bg-white/5 hover:text-rh-lime"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <Globe className="h-3.5 w-3.5" />
-                </a>
-              )}
-              {twitter && (
-                <a
-                  href={twitter}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  title="X / Twitter"
-                  aria-label={`${token.symbol} on X`}
-                  className="rounded-md p-1.5 text-rh-muted transition-colors hover:bg-white/5 hover:text-rh-lime"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <XIcon className="h-3.5 w-3.5" />
-                </a>
-              )}
-              {telegram && (
-                <a
-                  href={telegram}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  title="Telegram"
-                  aria-label={`${token.symbol} Telegram`}
-                  className="rounded-md p-1.5 text-rh-muted transition-colors hover:bg-white/5 hover:text-rh-lime"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <TelegramIcon className="h-3.5 w-3.5" />
-                </a>
-              )}
-              {discord && (
-                <a
-                  href={discord}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  title="Discord"
-                  aria-label={`${token.symbol} Discord`}
-                  className="rounded-md p-1.5 text-rh-muted transition-colors hover:bg-white/5 hover:text-rh-lime"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <DiscordIcon className="h-3.5 w-3.5" />
-                </a>
-              )}
-            </>
-          ) : (
-            <span className="text-[10px] text-rh-dim">No socials</span>
-          )}
-        </div>
-
-        <Link
-          href={`/wallet/${token.creator}`}
-          title="Creator profile"
-          aria-label="Creator profile"
-          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white/5 text-base leading-none transition-colors hover:bg-rh-lime/20"
-          onClick={(e) => e.stopPropagation()}
-        >
-          <span aria-hidden>{emoji}</span>
-        </Link>
+      <div className="flex items-center gap-1.5 border-t border-rh-raised/60 px-5 py-2.5">
+        {hasSocials ? (
+          <>
+            {website && (
+              <a
+                href={website}
+                target="_blank"
+                rel="noopener noreferrer"
+                title="Website"
+                aria-label={`${token.symbol} website`}
+                className="rounded-md p-1.5 text-rh-muted transition-colors hover:bg-white/5 hover:text-rh-lime"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <Globe className="h-3.5 w-3.5" />
+              </a>
+            )}
+            {twitter && (
+              <a
+                href={twitter}
+                target="_blank"
+                rel="noopener noreferrer"
+                title="X / Twitter"
+                aria-label={`${token.symbol} on X`}
+                className="rounded-md p-1.5 text-rh-muted transition-colors hover:bg-white/5 hover:text-rh-lime"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <XIcon className="h-3.5 w-3.5" />
+              </a>
+            )}
+            {telegram && (
+              <a
+                href={telegram}
+                target="_blank"
+                rel="noopener noreferrer"
+                title="Telegram"
+                aria-label={`${token.symbol} Telegram`}
+                className="rounded-md p-1.5 text-rh-muted transition-colors hover:bg-white/5 hover:text-rh-lime"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <TelegramIcon className="h-3.5 w-3.5" />
+              </a>
+            )}
+            {discord && (
+              <a
+                href={discord}
+                target="_blank"
+                rel="noopener noreferrer"
+                title="Discord"
+                aria-label={`${token.symbol} Discord`}
+                className="rounded-md p-1.5 text-rh-muted transition-colors hover:bg-white/5 hover:text-rh-lime"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <DiscordIcon className="h-3.5 w-3.5" />
+              </a>
+            )}
+          </>
+        ) : (
+          <span className="text-[10px] text-rh-dim">No socials</span>
+        )}
       </div>
     </motion.div>
   );
