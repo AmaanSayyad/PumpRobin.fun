@@ -879,8 +879,8 @@ export default function LaunchPage() {
           address: CONTRACTS.factory,
           abi: PUMP_ROBIN_FACTORY_ABI,
           functionName: "createToken",
-          args: [name, symbol, imagePreview, description],
-          // One tx: creation fee + ownership buy (factory buyFor) — Bags createAndBuy
+          args: [name, symbol, imagePreview, description, antiSnipe],
+          // One tx: creation fee + seed/buy — Uniswap pool + optional anti-snipe arm
           value: fee + buyWei,
         });
       } catch (err) {
@@ -1108,8 +1108,8 @@ export default function LaunchPage() {
                 }}
               />
               <ToggleRow
-                title="Anti-snipe"
-                description="Blocks bots for 2 min"
+                title="Anti-snipe (fee decay)"
+                description={`Buys start at ${CHAIN_CONFIG.antiSnipeStartBps / 100}% fee, decay to ${CHAIN_CONFIG.antiSnipeEndBps / 100}% over ${CHAIN_CONFIG.antiSnipeDurationSec}s. Swaps still work on Uniswap/GMGN — snipers just pay more. Your first buy is exempt.`}
                 icon={<Shield className="h-4 w-4" />}
                 checked={antiSnipe}
                 onChange={setAntiSnipe}
@@ -1685,7 +1685,7 @@ export default function LaunchPage() {
                 <div className="mt-4 flex flex-wrap gap-1.5">
                   {communityCoin && <Chip>Community fees</Chip>}
                   {communityBoard && <Chip>Board</Chip>}
-                  {antiSnipe && <Chip>Anti-snipe</Chip>}
+                  {antiSnipe && <Chip>Anti-snipe 80%→0% / 10s</Chip>}
                   {maxWallet2pct && <Chip>2% max</Chip>}
                   {feeSharing && <Chip>Fee share</Chip>}
                 </div>

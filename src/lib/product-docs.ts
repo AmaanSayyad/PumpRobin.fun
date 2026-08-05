@@ -16,7 +16,7 @@ export const LAUNCH_MECHANICS = [
   },
   {
     title: "Anti-snipe",
-    body: "A short launch window aimed at bots trying to front-run real buyers. Mark it on create so traders know the intent; contract-level fee stepping is on the roadmap.",
+    body: `Optional. When on, buys from the Uniswap pool start at an 80% fee that linearly decays to 0% over 10 seconds (Bankr-style). Swaps still succeed on Uniswap/GMGN — snipers just overpay. Your create-time first buy is exempt.`,
   },
   {
     title: "Custom supply",

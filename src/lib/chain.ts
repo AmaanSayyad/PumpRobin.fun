@@ -77,9 +77,12 @@ export const CHAIN_CONFIG = {
   alertsSubDays: 30,
   /** Min ETH that seeds the Uniswap V3 pool at launch (shown on GMGN) */
   minSeedLiquidityEth: "0.01",
+  /** Anti-snipe fee decay (when enabled at launch) */
+  antiSnipeStartBps: 8_000, // 80%
+  antiSnipeEndBps: 0,
+  antiSnipeDurationSec: 10,
   /**
    * @deprecated Launches now seed Uniswap immediately; kept for copy fallbacks.
-   * ~8 ETH was the old bonding-curve graduation threshold.
    */
   graduationThreshold: 8, // ETH (legacy)
   /** Bonding-curve trade fees (legacy pre-grad curves only) */

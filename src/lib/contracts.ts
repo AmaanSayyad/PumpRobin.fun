@@ -9,6 +9,7 @@ export const PUMP_ROBIN_FACTORY_ABI = [
       { name: "name", type: "string", indexed: false },
       { name: "symbol", type: "string", indexed: false },
       { name: "imageUri", type: "string", indexed: false },
+      { name: "antiSnipe", type: "bool", indexed: false },
     ],
   },
   {
@@ -19,6 +20,7 @@ export const PUMP_ROBIN_FACTORY_ABI = [
       { name: "symbol", type: "string" },
       { name: "imageUri", type: "string" },
       { name: "description", type: "string" },
+      { name: "antiSnipe", type: "bool" },
     ],
     outputs: [
       { name: "token", type: "address" },

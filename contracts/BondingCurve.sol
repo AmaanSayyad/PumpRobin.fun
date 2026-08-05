@@ -129,11 +129,15 @@ contract BondingCurve is ReentrancyGuard {
         if (buyEth > 0) {
             uint256 tokensOut = _swapEthForTokens(recipient, buyEth, minTokensOut);
             uint256 price = getPrice();
-            // Prefer pool-implied price after graduation
             if (price == 0 && tokensOut > 0) {
                 price = (buyEth * 1e18) / tokensOut;
             }
             emit Trade(recipient, true, buyEth, tokensOut, price);
+        }
+
+        // Arm fee-decay after creator buy so first-buy is not sniped by the 80% fee
+        if (token.antiSnipeEnabled()) {
+            token.armTrading(uniswapPool);
         }
     }
 

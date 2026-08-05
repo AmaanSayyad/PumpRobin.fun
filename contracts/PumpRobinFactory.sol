@@ -9,13 +9,12 @@ import "./BondingCurve.sol";
  * @notice Factory for tokens that launch straight into a Uniswap V3 pool.
  * @dev createToken: creation fee + seed ETH (≥ MIN_SEED). Excess seeds locked
  *      LP and optionally buys for the creator in the same tx (Bags create+buy).
+ *      Optional antiSnipe arms an 80%→0% buy fee decay for 10s after launch.
  */
 contract PumpRobinFactory {
     uint256 public constant CREATION_FEE = 0.0005 ether;
-    /// @dev Kept for UI / legacy quote helpers (virtual curve no longer used at launch)
     uint256 public constant INITIAL_VIRTUAL_ETH = 1.3 ether;
     uint256 public constant INITIAL_VIRTUAL_TOKENS = 1_073_000_000 * 1e18;
-    /// @dev Must match BondingCurve.MIN_SEED — Uniswap pool needs real ETH side
     uint256 public constant MIN_SEED_LIQUIDITY = 0.01 ether;
 
     address public owner;
@@ -30,7 +29,8 @@ contract PumpRobinFactory {
         address indexed creator,
         string name,
         string symbol,
-        string imageUri
+        string imageUri,
+        bool antiSnipe
     );
     event FeeCollectorUpdated(address indexed previous, address indexed next);
 
@@ -44,7 +44,8 @@ contract PumpRobinFactory {
         string calldata name,
         string calldata symbol,
         string calldata imageUri,
-        string calldata description
+        string calldata description,
+        bool antiSnipe
     ) external payable returns (address token, address bondingCurve) {
         require(msg.value >= CREATION_FEE + MIN_SEED_LIQUIDITY, "Need seed liquidity");
         require(bytes(name).length > 0, "Name required");
@@ -55,7 +56,9 @@ contract PumpRobinFactory {
             symbol,
             imageUri,
             description,
-            msg.sender
+            msg.sender,
+            antiSnipe,
+            feeCollector
         );
 
         BondingCurve curve = new BondingCurve(
@@ -67,6 +70,8 @@ contract PumpRobinFactory {
             INITIAL_VIRTUAL_TOKENS
         );
 
+        newToken.setLauncher(address(curve));
+
         uint256 supply = newToken.totalSupply();
         newToken.transfer(address(curve), supply);
 
@@ -77,12 +82,19 @@ contract PumpRobinFactory {
         tokenToCurve[token] = bondingCurve;
         curveToToken[bondingCurve] = token;
 
-        emit TokenCreated(token, bondingCurve, msg.sender, name, symbol, imageUri);
+        emit TokenCreated(
+            token,
+            bondingCurve,
+            msg.sender,
+            name,
+            symbol,
+            imageUri,
+            antiSnipe
+        );
 
         (bool feeSent, ) = feeCollector.call{value: CREATION_FEE}("");
         require(feeSent, "Fee transfer failed");
 
-        // Seed Uniswap V3 pool + optional creator buy in one shot
         uint256 seedEth = msg.value - CREATION_FEE;
         curve.seedAndGraduate{value: seedEth}(msg.sender, 0);
     }
