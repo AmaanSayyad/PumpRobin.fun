@@ -168,6 +168,15 @@ export async function normalizeImageUpload(
     };
   }
 
+  // Keep animated GIFs as-is (do not re-encode)
+  if (mime === "image/gif") {
+    return {
+      blob: new Blob([buf], { type: "image/gif" }),
+      filename: `${baseName}.gif`,
+      mime: "image/gif",
+    };
+  }
+
   // Normalize odd JPEG MIME labels for Pinata
   if (mime === "image/jpeg") {
     return {

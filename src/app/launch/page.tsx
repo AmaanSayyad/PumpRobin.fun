@@ -969,11 +969,14 @@ export default function LaunchPage() {
                     <span className="flex flex-col items-center gap-1.5 text-rh-muted">
                       <Plus className="h-5 w-5" />
                       <span className="text-xs">Upload</span>
+                      <span className="px-1 text-center text-[10px] leading-tight text-rh-dim">
+                        JPG · PNG · GIF · WebP · HEIC
+                      </span>
                     </span>
                   )}
                   <input
                     type="file"
-                    accept="image/*,.heic,.heif,.jpg,.jpeg,.png,.webp,.gif"
+                    accept="image/gif,image/jpeg,image/png,image/webp,image/heic,image/heif,.gif,.jpg,.jpeg,.png,.webp,.heic,.heif"
                     className="hidden"
                     onChange={(e) => handleImageUpload(e, "image")}
                   />
@@ -1087,7 +1090,7 @@ export default function LaunchPage() {
                   )}
                   <input
                     type="file"
-                    accept="image/*,.heic,.heif,.jpg,.jpeg,.png,.webp,.gif"
+                    accept="image/gif,image/jpeg,image/png,image/webp,image/heic,image/heif,.gif,.jpg,.jpeg,.png,.webp,.heic,.heif"
                     className="hidden"
                     onChange={(e) => handleImageUpload(e, "banner")}
                   />
