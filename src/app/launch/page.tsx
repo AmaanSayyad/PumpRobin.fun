@@ -741,8 +741,12 @@ export default function LaunchPage() {
   ) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    // Allow re-selecting the same file after a failed attempt
+    e.target.value = "";
 
-    // Instant local preview while Pinata upload runs
+    setError("");
+
+    // Instant local preview while upload runs (HEIC may not paint until IPFS JPEG returns)
     const localUrl = URL.createObjectURL(file);
     if (kind === "image") setImagePreview(localUrl);
     else setBannerPreview(localUrl);
@@ -759,6 +763,9 @@ export default function LaunchPage() {
       else setBannerPreview(json.url);
       URL.revokeObjectURL(localUrl);
     } catch (err) {
+      if (kind === "image") setImagePreview(null);
+      else setBannerPreview(null);
+      URL.revokeObjectURL(localUrl);
       setError(
         err instanceof Error
           ? err.message
@@ -966,7 +973,7 @@ export default function LaunchPage() {
                   )}
                   <input
                     type="file"
-                    accept="image/*"
+                    accept="image/*,.heic,.heif,.jpg,.jpeg,.png,.webp,.gif"
                     className="hidden"
                     onChange={(e) => handleImageUpload(e, "image")}
                   />
@@ -1080,7 +1087,7 @@ export default function LaunchPage() {
                   )}
                   <input
                     type="file"
-                    accept="image/*"
+                    accept="image/*,.heic,.heif,.jpg,.jpeg,.png,.webp,.gif"
                     className="hidden"
                     onChange={(e) => handleImageUpload(e, "banner")}
                   />
