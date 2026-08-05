@@ -32,9 +32,16 @@ export function shortenAddress(addr: string, chars = 4): string {
   return `${addr.slice(0, chars + 2)}...${addr.slice(-chars)}`;
 }
 
-export function timeAgo(date: Date): string {
-  const seconds = Math.floor((Date.now() - date.getTime()) / 1000);
-  if (seconds < 60) return `${seconds}s ago`;
+export function timeAgo(date: Date | string | number): string {
+  const ms =
+    date instanceof Date
+      ? date.getTime()
+      : typeof date === "number"
+        ? date
+        : new Date(date).getTime();
+  if (!Number.isFinite(ms)) return "—";
+  const seconds = Math.floor((Date.now() - ms) / 1000);
+  if (seconds < 60) return `${Math.max(0, seconds)}s ago`;
   if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
   if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
   return `${Math.floor(seconds / 86400)}d ago`;
