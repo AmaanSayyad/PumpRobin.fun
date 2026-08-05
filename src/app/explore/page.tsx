@@ -11,9 +11,11 @@ import {
 } from "lucide-react";
 import { TokenCard } from "@/components/tokens/token-card";
 import { useAppStore } from "@/lib/store";
+import { isTokenFeatured } from "@/lib/data";
 import { cn } from "@/lib/utils";
 
 type ViewTab =
+  | "featured"
   | "graduated"
   | "bonding"
   | "trending"
@@ -28,6 +30,13 @@ const TABS: {
   icon: ReactNode;
   showCount?: boolean;
 }[] = [
+  {
+    id: "featured",
+    label: "Featured",
+    description: "Paid boosts — pinned launches on Explore",
+    icon: <Sparkles className="w-3.5 h-3.5" strokeWidth={2.25} />,
+    showCount: true,
+  },
   {
     id: "graduated",
     label: "Graduated",
@@ -75,13 +84,14 @@ export default function ExplorePage() {
 
   const counts = useMemo(
     () => ({
+      featured: tokens.filter((t) => isTokenFeatured(t.metadata)).length,
       graduated: tokens.filter((t) => t.graduated).length,
       bonding: tokens.filter((t) => !t.graduated).length,
     }),
     [tokens]
   );
 
-  const active = TABS.find((t) => t.id === tab) ?? TABS[1];
+  const active = TABS.find((t) => t.id === tab) ?? TABS[2];
 
   const filtered = useMemo(() => {
     let result = [...tokens];
@@ -97,31 +107,67 @@ export default function ExplorePage() {
     }
 
     switch (tab) {
+      case "featured":
+        result = result.filter((t) => isTokenFeatured(t.metadata));
+        result.sort(
+          (a, b) =>
+            new Date(b.metadata?.featuredUntil || 0).getTime() -
+            new Date(a.metadata?.featuredUntil || 0).getTime()
+        );
+        break;
       case "graduated":
         result = result.filter((t) => t.graduated);
-        result.sort((a, b) => b.marketCap - a.marketCap);
+        result.sort((a, b) => {
+          const af = isTokenFeatured(a.metadata) ? 1 : 0;
+          const bf = isTokenFeatured(b.metadata) ? 1 : 0;
+          if (af !== bf) return bf - af;
+          return b.marketCap - a.marketCap;
+        });
         break;
       case "bonding":
         result = result.filter((t) => !t.graduated);
-        result.sort((a, b) => b.progress - a.progress || b.marketCap - a.marketCap);
+        result.sort((a, b) => {
+          const af = isTokenFeatured(a.metadata) ? 1 : 0;
+          const bf = isTokenFeatured(b.metadata) ? 1 : 0;
+          if (af !== bf) return bf - af;
+          return b.progress - a.progress || b.marketCap - a.marketCap;
+        });
         break;
       case "trending":
-        result.sort(
-          (a, b) =>
-            b.volume24h * 2 + Math.abs(b.priceChange24h) -
+        result.sort((a, b) => {
+          const af = isTokenFeatured(a.metadata) ? 1 : 0;
+          const bf = isTokenFeatured(b.metadata) ? 1 : 0;
+          if (af !== bf) return bf - af;
+          return (
+            b.volume24h * 2 +
+            Math.abs(b.priceChange24h) -
             (a.volume24h * 2 + Math.abs(a.priceChange24h))
-        );
+          );
+        });
         break;
       case "movers":
-        result.sort(
-          (a, b) => Math.abs(b.priceChange24h) - Math.abs(a.priceChange24h)
-        );
+        result.sort((a, b) => {
+          const af = isTokenFeatured(a.metadata) ? 1 : 0;
+          const bf = isTokenFeatured(b.metadata) ? 1 : 0;
+          if (af !== bf) return bf - af;
+          return Math.abs(b.priceChange24h) - Math.abs(a.priceChange24h);
+        });
         break;
       case "new":
-        result.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+        result.sort((a, b) => {
+          const af = isTokenFeatured(a.metadata) ? 1 : 0;
+          const bf = isTokenFeatured(b.metadata) ? 1 : 0;
+          if (af !== bf) return bf - af;
+          return b.createdAt.getTime() - a.createdAt.getTime();
+        });
         break;
       case "volume":
-        result.sort((a, b) => b.volume24h - a.volume24h);
+        result.sort((a, b) => {
+          const af = isTokenFeatured(a.metadata) ? 1 : 0;
+          const bf = isTokenFeatured(b.metadata) ? 1 : 0;
+          if (af !== bf) return bf - af;
+          return b.volume24h - a.volume24h;
+        });
         break;
     }
 
@@ -129,6 +175,7 @@ export default function ExplorePage() {
   }, [tokens, search, tab]);
 
   const emptyCopy: Record<ViewTab, string> = {
+    featured: "No featured launches right now — boost yours at launch.",
     graduated: "No graduated tokens yet.",
     bonding: "No bonding-curve tokens yet.",
     trending: "Nothing trending yet.",
@@ -163,11 +210,13 @@ export default function ExplorePage() {
           {TABS.map((t) => {
             const selected = tab === t.id;
             const count =
-              t.id === "graduated"
-                ? counts.graduated
-                : t.id === "bonding"
-                  ? counts.bonding
-                  : undefined;
+              t.id === "featured"
+                ? counts.featured
+                : t.id === "graduated"
+                  ? counts.graduated
+                  : t.id === "bonding"
+                    ? counts.bonding
+                    : undefined;
 
             return (
               <button

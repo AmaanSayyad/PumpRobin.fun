@@ -35,6 +35,21 @@ export interface LaunchMetadata {
   athMarketCapEth?: number;
   /** ISO timestamp when ATH was last updated */
   athAt?: string;
+  /** Paid Explore feature boost */
+  featured?: boolean;
+  /** ISO expiry for featured placement */
+  featuredUntil?: string;
+  /** ETH paid for the boost */
+  featuredPaidEth?: number;
+  /** Tx hash of the boost payment to fee collector */
+  featuredTxHash?: string;
+}
+
+/** Whether a token's paid Explore feature is still active. */
+export function isTokenFeatured(meta?: LaunchMetadata | null): boolean {
+  if (!meta?.featured || !meta.featuredUntil) return false;
+  const until = new Date(meta.featuredUntil).getTime();
+  return Number.isFinite(until) && until > Date.now();
 }
 
 /** Always-visible socials on the launch form */

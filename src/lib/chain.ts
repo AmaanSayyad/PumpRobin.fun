@@ -57,6 +57,13 @@ export const CHAIN_CONFIG = {
    * Kept slightly above live estimateGas so the launch banner isn't scary vs bags.fm.
    */
   launchGasBufferEth: "0.00035",
+  /**
+   * Paid Explore feature boost (~$100 at ~$1.8k ETH). Sent to feeCollector;
+   * pins the coin in Featured for `featureBoostDays`.
+   */
+  featureBoostEth: "0.055",
+  featureBoostUsdHint: 100,
+  featureBoostDays: 7,
   /** ~8 ETH ≈ $30k LP at graduate — clears DEX Screener minLiq≈$25k filters */
   graduationThreshold: 8, // ETH
   /** Bonding-curve trade fees (of trade volume) */

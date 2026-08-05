@@ -136,9 +136,10 @@ export function supplyPercentForEthIn(ethIn: number, supply = DEFAULT_SUPPLY): n
   return (tokensOut / Math.max(1, supply)) * 100;
 }
 
-/** Min ETH needed in wallet to cover creation fee + optional first buy + gas buffer. */
-export function minEthToLaunch(initialBuyEth = 0): number {
+/** Min ETH needed in wallet to cover creation fee + optional first buy + optional feature + gas. */
+export function minEthToLaunch(initialBuyEth = 0, featureBoost = false): number {
   const creation = Number(CHAIN_CONFIG.creationFee);
   const buffer = Number(CHAIN_CONFIG.launchGasBufferEth);
-  return creation + Math.max(0, initialBuyEth) + buffer;
+  const feature = featureBoost ? Number(CHAIN_CONFIG.featureBoostEth) : 0;
+  return creation + Math.max(0, initialBuyEth) + buffer + feature;
 }

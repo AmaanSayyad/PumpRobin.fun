@@ -2,9 +2,10 @@
 
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { Globe } from "lucide-react";
+import { Globe, Sparkles } from "lucide-react";
 import { cn, formatEth, timeAgo } from "@/lib/utils";
 import type { TokenData } from "@/lib/data";
+import { isTokenFeatured } from "@/lib/data";
 import { TokenLogo } from "@/components/token-logo";
 
 interface TokenCardProps {
@@ -104,13 +105,17 @@ export function TokenCard({ token, index = 0 }: TokenCardProps) {
   const telegram = normalizeHref(token.metadata?.telegram);
   const discord = normalizeHref(token.metadata?.discord);
   const hasSocials = Boolean(website || twitter || telegram || discord);
+  const featured = isTokenFeatured(token.metadata);
 
   return (
     <motion.div
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: Math.min(index, 12) * 0.03 }}
-      className="bg-rh-surface border border-rh-raised transition-colors hover:border-rh-border"
+      className={cn(
+        "bg-rh-surface border transition-colors hover:border-rh-border",
+        featured ? "border-rh-lime/40" : "border-rh-raised"
+      )}
     >
       <Link href={`/token/${token.address}`} className="block p-5 pb-3">
         <div className="flex items-start gap-3">
@@ -124,7 +129,15 @@ export function TokenCard({ token, index = 0 }: TokenCardProps) {
           <div className="min-w-0 flex-1">
             <div className="flex items-center justify-between gap-2">
               <div className="min-w-0">
-                <h3 className="truncate font-medium">{token.name}</h3>
+                <div className="flex flex-wrap items-center gap-2">
+                  <h3 className="truncate font-medium">{token.name}</h3>
+                  {featured && (
+                    <span className="inline-flex items-center gap-0.5 rounded-full bg-rh-lime/15 px-1.5 py-0.5 text-[10px] font-medium text-rh-lime">
+                      <Sparkles className="h-2.5 w-2.5" />
+                      Featured
+                    </span>
+                  )}
+                </div>
                 <span className="text-xs text-rh-muted">${token.symbol}</span>
               </div>
               {change !== 0 && (

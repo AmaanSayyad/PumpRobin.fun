@@ -7,10 +7,13 @@ import { useRouter } from "next/navigation";
 import {
   useAccount,
   useBalance,
+  useConfig,
+  useSendTransaction,
   useWriteContract,
   useWaitForTransactionReceipt,
 } from "wagmi";
 import { decodeEventLog, formatEther, parseEther, type Hash } from "viem";
+import { waitForTransactionReceipt } from "@wagmi/core";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
 import {
   Check,
@@ -24,6 +27,7 @@ import {
   Percent,
   Plus,
   Shield,
+  Sparkles,
   Trash2,
   Users,
   Wallet,
@@ -31,6 +35,7 @@ import {
 import { RhButton } from "@/components/ui/rh-button";
 import {
   CHAIN_CONFIG,
+  FEE_COLLECTOR,
   OWNERSHIP_PRESETS,
   explorerAddressUrl,
   explorerTxUrl,
@@ -305,6 +310,7 @@ function Collapsible({
 
 export default function LaunchPage() {
   const router = useRouter();
+  const wagmiConfig = useConfig();
   const { address, isConnected, status: accountStatus } = useAccount();
   const { data: ethBalance } = useBalance({ address });
   const { addToken, addTradeLocal, refreshTokens, upsertToken } = useAppStore();
@@ -323,6 +329,7 @@ export default function LaunchPage() {
   const [communityBoard, setCommunityBoard] = useState(false);
   const [antiSnipe, setAntiSnipe] = useState(false);
   const [maxWallet2pct, setMaxWallet2pct] = useState(false);
+  const [featureBoost, setFeatureBoost] = useState(false);
   const [customSupply, setCustomSupply] = useState(false);
   const [supply, setSupply] = useState(DEFAULT_SUPPLY);
   const [decimals, setDecimals] = useState(() => defaultDecimalsForSupply(DEFAULT_SUPPLY));
@@ -443,6 +450,7 @@ export default function LaunchPage() {
   ]);
 
   const { writeContract, data: hash, isPending, error: writeError } = useWriteContract();
+  const { sendTransactionAsync, isPending: boostPending } = useSendTransaction();
   const {
     data: receipt,
     isLoading: isConfirming,
@@ -680,7 +688,7 @@ export default function LaunchPage() {
   }, [effectiveSupply]);
 
   const buyEthNum = Number(initialBuyEth) || 0;
-  const minEthNeeded = minEthToLaunch(buyEthNum);
+  const minEthNeeded = minEthToLaunch(buyEthNum, featureBoost);
   const walletEth = ethBalance ? Number(formatEther(ethBalance.value)) : 0;
   const feeShareTotalPct = feeShares.reduce((sum, row) => sum + (Number(row.pct) || 0), 0);
   const receivedPct =
@@ -741,6 +749,7 @@ export default function LaunchPage() {
     setCommunityBoard(false);
     setAntiSnipe(false);
     setMaxWallet2pct(false);
+    setFeatureBoost(false);
     setCustomSupply(false);
     setSupply(DEFAULT_SUPPLY);
     setDecimals(defaultDecimalsForSupply(DEFAULT_SUPPLY));
@@ -807,24 +816,46 @@ export default function LaunchPage() {
       const buyWei = parseEther(
         Number.isFinite(buyEthNum) ? String(buyEthNum) : "0"
       );
-      pendingLaunch.current = {
-        name,
-        symbol,
-        imageUri: imagePreview,
-        description,
-        creator: address,
-        metadata,
-      };
-      registeredTx.current = null;
-      writeContract({
-        address: CONTRACTS.factory,
-        abi: PUMP_ROBIN_FACTORY_ABI,
-        functionName: "createToken",
-        args: [name, symbol, imagePreview, description],
-        // One tx: creation fee + ownership buy (factory buyFor) — Bags createAndBuy
-        value: fee + buyWei,
-      });
+
       setStatus("pending");
+      try {
+        // Pay Explore feature boost to collector first (separate from create+buy value)
+        if (featureBoost) {
+          const boostWei = parseEther(CHAIN_CONFIG.featureBoostEth);
+          const boostHash = await sendTransactionAsync({
+            to: FEE_COLLECTOR,
+            value: boostWei,
+          });
+          await waitForTransactionReceipt(wagmiConfig, { hash: boostHash });
+          const until = new Date();
+          until.setDate(until.getDate() + CHAIN_CONFIG.featureBoostDays);
+          metadata.featured = true;
+          metadata.featuredUntil = until.toISOString();
+          metadata.featuredPaidEth = Number(CHAIN_CONFIG.featureBoostEth);
+          metadata.featuredTxHash = boostHash;
+        }
+
+        pendingLaunch.current = {
+          name,
+          symbol,
+          imageUri: imagePreview,
+          description,
+          creator: address,
+          metadata,
+        };
+        registeredTx.current = null;
+        writeContract({
+          address: CONTRACTS.factory,
+          abi: PUMP_ROBIN_FACTORY_ABI,
+          functionName: "createToken",
+          args: [name, symbol, imagePreview, description],
+          // One tx: creation fee + ownership buy (factory buyFor) — Bags createAndBuy
+          value: fee + buyWei,
+        });
+      } catch (err) {
+        setStatus("error");
+        setError(friendlyWalletError(err, "Feature payment or launch failed"));
+      }
       return;
     }
 
@@ -859,7 +890,8 @@ export default function LaunchPage() {
 
   const ticker = symbol || "TICK";
   const displayName = name || "Your coin";
-  const launching = isPending || isConfirming || status === "pending";
+  const launching =
+    isPending || isConfirming || boostPending || status === "pending";
   const canLaunch = Boolean(name.trim() && symbol.trim());
 
   return (
@@ -1057,6 +1089,13 @@ export default function LaunchPage() {
                 icon={<Wallet className="h-4 w-4" />}
                 checked={maxWallet2pct}
                 onChange={setMaxWallet2pct}
+              />
+              <ToggleRow
+                title={`Feature on Explore · ${CHAIN_CONFIG.featureBoostEth} ETH`}
+                description={`Pin in Featured for ${CHAIN_CONFIG.featureBoostDays} days (~$${CHAIN_CONFIG.featureBoostUsdHint}). Paid to platform.`}
+                icon={<Sparkles className="h-4 w-4" />}
+                checked={featureBoost}
+                onChange={setFeatureBoost}
               />
               <ToggleRow
                 title="Custom supply"
@@ -1319,8 +1358,14 @@ export default function LaunchPage() {
                   {CHAIN_CONFIG.creationFee} creation
                   {buyEthNum > 0
                     ? ` + ${buyEthNum.toFixed(4)} ownership (${receivedPct.toFixed(2)}%)`
+                    : ""}
+                  {featureBoost
+                    ? ` + ${CHAIN_CONFIG.featureBoostEth} feature`
                     : ""}{" "}
                   + ~{CHAIN_CONFIG.launchGasBufferEth} network gas on Robinhood
+                  {featureBoost
+                    ? " · feature is a separate wallet confirm before create"
+                    : ""}
                 </span>
               </div>
             </Panel>
