@@ -50,9 +50,9 @@ export const CREATOR_FEE_CARDS = [
   },
 ] as const;
 
-export const CREATOR_FEES_INTRO = `Launching isn't only about going live — creators earn ${CREATOR_FEE_PCT}% of every buy and sell on their bonding curve, and PumpRobin takes ${PLATFORM_FEE_PCT}% as a platform fee (${TRADE_FEE_PCT}% total).`;
+export const CREATOR_FEES_INTRO = `Every bonding-curve trade takes ${TRADE_FEE_PCT}% total — ${CREATOR_FEE_PCT}% to the creator fee collector and ${PLATFORM_FEE_PCT}% to PumpRobin's platform collector.`;
 
-export const CREATOR_FEES_BODY = `On deployed BondingCurve contracts, the creator's ${CREATOR_FEE_PCT}% share of each trade accrues in the curve and is withdrawn with Claim creator fees (creator wallet only). PumpRobin's ${PLATFORM_FEE_PCT}% is paid to the platform collector on every trade. Fee-share splits among multiple wallets, payout redirect, and post-graduation Uniswap LP fee collection are on the roadmap. Platform also earns the ${CHAIN_CONFIG.creationFee} ETH creation fee.`;
+export const CREATOR_FEES_BODY = `On deployed BondingCurve contracts, the ${CREATOR_FEE_PCT}% creator-fee share is paid instantly to ${CHAIN_CONFIG.creatorFeeCollector} on every buy and sell. PumpRobin's ${PLATFORM_FEE_PCT}% goes to the platform collector (${CHAIN_CONFIG.feeCollector}) on every trade. Fee-share splits among multiple wallets and post-graduation Uniswap LP fee collection are on the roadmap. Platform also earns the ${CHAIN_CONFIG.creationFee} ETH creation fee.`;
 
 export const FAIR_BY_DESIGN = [
   {
@@ -61,7 +61,7 @@ export const FAIR_BY_DESIGN = [
   },
   {
     title: "Creator + platform fees on-chain",
-    body: `Every bonding-curve trade takes ${TRADE_FEE_PCT}% total — ${CREATOR_FEE_PCT}% accrues for the creator to claim, and ${PLATFORM_FEE_PCT}% goes to PumpRobin instantly.`,
+    body: `Every bonding-curve trade takes ${TRADE_FEE_PCT}% total — ${CREATOR_FEE_PCT}% to the creator fee collector and ${PLATFORM_FEE_PCT}% to PumpRobin, both paid instantly.`,
   },
   {
     title: "Launch options recorded",

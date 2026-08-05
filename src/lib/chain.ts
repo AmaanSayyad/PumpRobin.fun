@@ -35,9 +35,13 @@ export const robinhoodTestnet = defineChain({
 
 export const WETH_ADDRESS = "0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73" as const;
 
-/** Receives creation fees + platform trade-fee share */
+/** Receives creation fees + platform trade-fee share (0.3%) */
 export const FEE_COLLECTOR =
   "0x61F928CBbc9b65C404C3DB42BDe403D78954aDD9" as const;
+
+/** Receives the 1% creator-fee share of every bonding-curve trade */
+export const CREATOR_FEE_COLLECTOR =
+  "0x4654FE1e59547372Db57e9F6865aa7aC3A0C77a3" as const;
 
 /** Official Uniswap v3 deployments on Robinhood Chain (4663) */
 export const UNISWAP_V3 = {
@@ -74,13 +78,14 @@ export const CHAIN_CONFIG = {
   /** ~8 ETH ≈ $30k LP at graduate — clears DEX Screener minLiq≈$25k filters */
   graduationThreshold: 8, // ETH
   /** Bonding-curve trade fees (of trade volume) */
-  creatorFeeBps: 100, // 1% → accrues for creator claim
-  platformFeeBps: 30, // 0.3% → platform fee collector on each trade
+  creatorFeeBps: 100, // 1% → CREATOR_FEE_COLLECTOR on each trade
+  platformFeeBps: 30, // 0.3% → FEE_COLLECTOR on each trade
   /** Total taken from buys/sells before curve math (= creator + platform) */
   tradeFeeBps: 130, // 1.3%
   totalSupply: 1_000_000_000,
   decimals: 18,
   feeCollector: FEE_COLLECTOR,
+  creatorFeeCollector: CREATOR_FEE_COLLECTOR,
   maxFeeShareRecipients: 100,
   uniswapPoolFee: UNISWAP_V3.poolFee,
 } as const;

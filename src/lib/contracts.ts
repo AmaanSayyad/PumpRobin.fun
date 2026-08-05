@@ -185,17 +185,10 @@ export const BONDING_CURVE_ABI = [
   },
   {
     type: "function",
-    name: "pendingCreatorFees",
+    name: "CREATOR_FEE_RECIPIENT",
     inputs: [],
-    outputs: [{ name: "", type: "uint256" }],
+    outputs: [{ name: "", type: "address" }],
     stateMutability: "view",
-  },
-  {
-    type: "function",
-    name: "claimCreatorFees",
-    inputs: [],
-    outputs: [],
-    stateMutability: "nonpayable",
   },
 ] as const;
 

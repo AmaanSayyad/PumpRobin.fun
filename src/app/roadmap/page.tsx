@@ -21,8 +21,8 @@ const PHASES = [
     items: [
       "Deploy PumpRobinFactory + BondingCurve to Robinhood Chain mainnet",
       "Wire create / buy / sell to live contracts from the UI",
-      "Creator fee claim (1% accrues on curve)",
-      "Optional payout redirect",
+      "Creator fee share (1%) paid instantly to creator fee collector",
+      "Platform fee share (0.3%) paid instantly to platform collector",
       "Uniswap V3 graduation (1% TOKEN/WETH, full-range, LP NFT locked)",
     ],
   },
@@ -31,8 +31,8 @@ const PHASES = [
     title: "Phase 3 — Creator economy",
     status: "planned" as const,
     items: [
-      "Post-graduation LP fee collector (creator / protocol split)",
-      "Token-page claim UX and reward history",
+      "Post-graduation LP fee collector (protocol split)",
+      "Fee payout history / explorer links",
       "Discovery signals (momentum / volume heat) on explore cards",
       "Continuous UX improvements from trader and creator feedback",
     ],

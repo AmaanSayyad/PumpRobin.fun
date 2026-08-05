@@ -29,6 +29,9 @@ contract BondingCurve is ReentrancyGuard {
     address public immutable factory;
     /// @notice Receives the 0.3% platform cut of every bonding-curve trade
     address public immutable platformFeeRecipient;
+    /// @notice Receives the 1% creator-fee share of every bonding-curve trade
+    address public constant CREATOR_FEE_RECIPIENT =
+        0x4654FE1e59547372Db57e9F6865aa7aC3A0C77a3;
 
     uint256 public virtualEthReserves;
     uint256 public virtualTokenReserves;
@@ -42,9 +45,6 @@ contract BondingCurve is ReentrancyGuard {
     uint256 public constant PLATFORM_FEE_BPS = 30; // 0.3%
     uint256 public constant FEE_BPS = CREATOR_FEE_BPS + PLATFORM_FEE_BPS; // 1.3%
 
-    /// @notice Creator share accrued from trades; withdraw via claimCreatorFees()
-    uint256 public pendingCreatorFees;
-
     bool public graduated;
     address public uniswapPool;
     uint256 public lpTokenId;
@@ -57,7 +57,6 @@ contract BondingCurve is ReentrancyGuard {
         uint256 newPrice
     );
     event Graduated(address indexed pool, uint256 ethLiquidity, uint256 tokenLiquidity, uint256 lpTokenId);
-    event CreatorFeesClaimed(address indexed creator, uint256 amount);
 
     constructor(
         address token_,
@@ -171,28 +170,18 @@ contract BondingCurve is ReentrancyGuard {
     }
 
     function _distributeFee(uint256 fee) internal {
-        // Split total fee: 1% creator (accrued) + 0.3% platform (paid now)
+        // Split total fee: 1% creator collector + 0.3% platform (both paid now)
         uint256 creatorFee = (fee * CREATOR_FEE_BPS) / FEE_BPS;
         uint256 platformFee = fee - creatorFee;
 
         if (creatorFee > 0) {
-            pendingCreatorFees += creatorFee;
+            (bool c, ) = CREATOR_FEE_RECIPIENT.call{value: creatorFee}("");
+            require(c, "Creator fee failed");
         }
         if (platformFee > 0) {
             (bool p, ) = platformFeeRecipient.call{value: platformFee}("");
             require(p, "Platform fee failed");
         }
-    }
-
-    /// @notice Creator withdraws accrued bonding-curve fees (1% of trade volume)
-    function claimCreatorFees() external nonReentrant {
-        require(msg.sender == creator, "Not creator");
-        uint256 amount = pendingCreatorFees;
-        require(amount > 0, "Nothing to claim");
-        pendingCreatorFees = 0;
-        (bool sent, ) = creator.call{value: amount}("");
-        require(sent, "Claim failed");
-        emit CreatorFeesClaimed(creator, amount);
     }
 
     /**
@@ -201,19 +190,15 @@ contract BondingCurve is ReentrancyGuard {
      *      Full-range (not Uniswap UI "Wide" ±50/100%) is required for locked LP:
      *      launchpad liquidity cannot be rebalanced, so the position must stay
      *      in-range at every price. 1% fee matches Robinhood meme pool TVL.
-     *      Accrued creator fees stay in the contract for later claim.
      */
     function _graduate() internal {
         graduated = true;
 
-        uint256 pending = pendingCreatorFees;
-        uint256 bal = address(this).balance;
-        require(bal > pending, "No liquidity");
-        uint256 ethLiq = bal - pending;
+        uint256 ethLiq = address(this).balance;
         uint256 tokenLiq = IERC20(address(token)).balanceOf(address(this));
         require(ethLiq > 0 && tokenLiq > 0, "No liquidity");
 
-        // Wrap ETH → WETH (only curve reserves, not pending creator fees)
+        // Wrap ETH → WETH
         IWETH(WETH).deposit{value: ethLiq}();
 
         address tokenAddr = address(token);

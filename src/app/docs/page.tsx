@@ -30,11 +30,11 @@ const TOC = [
 const FAQ = [
   {
     q: "How much does it cost to launch a token?",
-    a: `${CHAIN_CONFIG.creationFee} ETH creation fee, plus gas. After that you only pay normal network gas for buys, sells, and (when live) fee claims.`,
+    a: `${CHAIN_CONFIG.creationFee} ETH creation fee, plus gas. After that you only pay normal network gas for buys and sells.`,
   },
   {
-    q: "How do I earn as a creator?",
-    a: `You earn ${CREATOR_FEE_PCT}% of every bonding-curve trade on your token. PumpRobin takes ${PLATFORM_FEE_PCT}% (${TRADE_FEE_PCT}% total). Creator fees accrue until you claim them on the token page.`,
+    q: "Where do creator fees go?",
+    a: `The ${CREATOR_FEE_PCT}% creator-fee share of every bonding-curve trade is paid instantly to the creator fee collector. PumpRobin takes ${PLATFORM_FEE_PCT}% (${TRADE_FEE_PCT}% total).`,
   },
   {
     q: "Do I need to deploy my own API?",
@@ -206,7 +206,7 @@ export default function DocsPage() {
 
           <section id="creator-fees" className="mb-14 scroll-mt-24">
             <h2 className="text-sm uppercase tracking-wider text-rh-dim mb-3">
-              Creator fees & claiming
+              Creator fees
             </h2>
             <p className="text-rh-muted text-[15px] leading-relaxed mb-4">
               {CREATOR_FEES_INTRO}
