@@ -16,19 +16,27 @@ import {
   X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { MUSIC_PLAYLIST, type MusicTrack } from "@/lib/music-playlist";
+import {
+  DEFAULT_TRACK_ID,
+  MUSIC_PLAYLIST,
+  type MusicTrack,
+} from "@/lib/music-playlist";
 
 const STORAGE_KEY = "pumprobin.techno";
 
 type Persisted = {
   muted?: boolean;
   volume?: number;
-  trackIndex?: number;
   collapsed?: boolean;
   disabled?: boolean;
   x?: number;
   y?: number;
 };
+
+function defaultTrackIndex(): number {
+  const i = MUSIC_PLAYLIST.findIndex((t) => t.id === DEFAULT_TRACK_ID);
+  return i >= 0 ? i : 0;
+}
 
 function readPersisted(): Persisted {
   try {
@@ -42,6 +50,8 @@ function readPersisted(): Persisted {
 function writePersisted(patch: Persisted) {
   try {
     const next = { ...readPersisted(), ...patch };
+    // Drop legacy trackIndex so old Perception (etc.) never restores
+    delete (next as Persisted & { trackIndex?: number }).trackIndex;
     localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
   } catch {
     /* ignore */
@@ -73,7 +83,7 @@ export function TechnoPlayer() {
   const [playing, setPlaying] = useState(false);
   const [muted, setMuted] = useState(false);
   const [volume, setVolume] = useState(0.55);
-  const [trackIndex, setTrackIndex] = useState(0);
+  const [trackIndex, setTrackIndex] = useState(defaultTrackIndex);
   const [progress, setProgress] = useState(0);
   const [collapsed, setCollapsed] = useState(false);
   const [showList, setShowList] = useState(false);
@@ -82,7 +92,7 @@ export function TechnoPlayer() {
   const [pos, setPos] = useState({ x: 20, y: 0 });
   const [dragging, setDragging] = useState(false);
   const startedRef = useRef(false);
-  const trackIndexRef = useRef(0);
+  const trackIndexRef = useRef(defaultTrackIndex());
 
   const track: MusicTrack = MUSIC_PLAYLIST[trackIndex] ?? MUSIC_PLAYLIST[0]!;
 
@@ -109,7 +119,6 @@ export function TechnoPlayer() {
         audio.src = t.src;
       }
       audio.load();
-      writePersisted({ trackIndex: next });
     },
     [ensureAudio]
   );
@@ -165,10 +174,8 @@ export function TechnoPlayer() {
     }
     if (saved.collapsed) setCollapsed(true);
 
-    const idx =
-      typeof saved.trackIndex === "number"
-        ? saved.trackIndex % MUSIC_PLAYLIST.length
-        : 0;
+    // Always start on the default track (ignore any legacy saved index)
+    const idx = defaultTrackIndex();
     trackIndexRef.current = idx;
     setTrackIndex(idx);
     audio.src = MUSIC_PLAYLIST[idx]!.src;

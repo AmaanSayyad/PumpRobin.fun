@@ -13,20 +13,22 @@ export type MusicTrack = {
   spatial?: "8D" | "16D";
 };
 
+/** Always the first song on load / refresh. */
+export const DEFAULT_TRACK_ID = "tech-house-future";
+
 /**
  * Dark / high-energy picks for PumpRobin’s neon launchpad vibe.
  * 8D/16D mixes are Jamendo CC tracks with spatial pan FX (Archive.org).
  */
 export const MUSIC_PLAYLIST: MusicTrack[] = [
   {
-    id: "8d-perception",
-    title: "Perception (8D)",
-    artist: "Livio Amato",
-    src: "/music/8d-perception.mp3",
-    bpm: 90,
-    color: "#ccff00",
-    license: "CC BY-NC-SA · Jamendo / 8D mix",
-    spatial: "8D",
+    id: "tech-house-future",
+    title: "Tech House Future",
+    artist: "Mr.Aleks",
+    src: "/music/tech-house-future.mp3",
+    bpm: 128,
+    color: "#7dffb3",
+    license: "Jamendo / Archive.org",
   },
   {
     id: "8d-beyond",
@@ -49,31 +51,12 @@ export const MUSIC_PLAYLIST: MusicTrack[] = [
     spatial: "16D",
   },
   {
-    id: "16d-musa",
-    title: "Musa 5th Melody (16D)",
-    artist: "Livio Amato",
-    src: "/music/16d-musa.mp3",
-    bpm: 88,
-    color: "#c4a0ff",
-    license: "CC BY-NC-SA · Jamendo / 16D mix",
-    spatial: "16D",
-  },
-  {
     id: "ultra-tech",
     title: "Ultra Tech",
     artist: "GYAKO",
     src: "/music/ultra-tech.mp3",
     bpm: 136,
     color: "#ffd166",
-    license: "Jamendo / Archive.org",
-  },
-  {
-    id: "tech-house-future",
-    title: "Tech House Future",
-    artist: "Mr.Aleks",
-    src: "/music/tech-house-future.mp3",
-    bpm: 128,
-    color: "#7dffb3",
     license: "Jamendo / Archive.org",
   },
   {
