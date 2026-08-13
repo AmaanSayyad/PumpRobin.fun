@@ -121,8 +121,7 @@ export default function TokenPage({
   // Prefer address presence — matches header WalletButton / RainbowKit better than isConnected alone
   const activeWallet = (wallet ?? undefined) as Address | undefined;
   const walletReady =
-    Boolean(activeWallet) &&
-    (isConnected || status === "connected" || status === "reconnecting");
+    Boolean(activeWallet) && (isConnected || status === "reconnecting");
 
   const { data: ethBalance } = useBalance({
     address: activeWallet,
