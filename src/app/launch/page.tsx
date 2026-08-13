@@ -53,14 +53,14 @@ import {
 } from "@/lib/data";
 import {
   DEFAULT_SUPPLY,
-  INITIAL_VIRTUAL_ETH,
-  INITIAL_VIRTUAL_TOKENS,
   ethInForSupplyPercent,
   formatSupplyShort,
   graduationMarketCapEth,
   initialTokenPriceEth,
+  launchSeedEth,
   marketCapEth,
   minEthToLaunch,
+  splitLaunchSeed,
   supplyPercentForEthIn,
 } from "@/lib/curve";
 
@@ -558,7 +558,13 @@ export default function LaunchPage() {
             launchTrade = {
               ethAmount: Number(formatEther(args.ethAmount)),
               tokenAmount: Number(formatEther(args.tokenAmount)),
-              price: Number(formatEther(args.newPrice)),
+              price: (() => {
+                const eth = Number(formatEther(args.ethAmount));
+                const tok = Number(formatEther(args.tokenAmount));
+                // Prefer fill price — curve getPrice() stays at virtual open after seedAndGraduate
+                if (eth > 0 && tok > 0) return eth / tok;
+                return Number(formatEther(args.newPrice));
+              })(),
             };
             break;
           } catch {
@@ -602,7 +608,6 @@ export default function LaunchPage() {
 
         if (launchTrade && finalAddress && address) {
           try {
-            const ethAfterFee = launchTrade.ethAmount;
             const sync = await fetch("/api/trades/sync", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
@@ -615,12 +620,7 @@ export default function LaunchPage() {
                 price: launchTrade.price,
                 feeEth: 0,
                 txHash: hash,
-                virtualEthReserves: INITIAL_VIRTUAL_ETH + ethAfterFee,
-                virtualTokenReserves:
-                  INITIAL_VIRTUAL_TOKENS - launchTrade.tokenAmount,
-                realEthReserves: lpEth || ethAfterFee,
-                realTokenReserves:
-                  DEFAULT_SUPPLY - launchTrade.tokenAmount,
+                // Don't fake bonding-curve virtuals after instant Uniswap seed
                 graduated: true,
                 uniswapPool,
               }),
@@ -719,11 +719,15 @@ export default function LaunchPage() {
   }, [effectiveSupply]);
 
   const buyEthNum = Number(initialBuyEth) || 0;
+  const seedEthNum = launchSeedEth(buyEthNum);
   const minEthNeeded = minEthToLaunch(buyEthNum, featureBoost);
   const walletEth = ethBalance ? Number(formatEther(ethBalance.value)) : 0;
   const feeShareTotalPct = feeShares.reduce((sum, row) => sum + (Number(row.pct) || 0), 0);
+  const seedSplit = splitLaunchSeed(seedEthNum);
   const receivedPct =
-    buyEthNum > 0 ? supplyPercentForEthIn(buyEthNum, effectiveSupply) : 0;
+    buyEthNum > 0 || ownershipPct != null
+      ? supplyPercentForEthIn(seedEthNum, effectiveSupply)
+      : 0;
 
   const applyOwnershipPct = (pct: number) => {
     const eth = ethInForSupplyPercent(pct, effectiveSupply);
@@ -843,7 +847,7 @@ export default function LaunchPage() {
       customSupply,
       supply: effectiveSupply,
       decimals,
-      initialBuyEth: buyEthNum > 0 ? buyEthNum : undefined,
+      initialBuyEth: seedEthNum > 0 ? seedEthNum : undefined,
       ownershipPct: ownershipPct ?? undefined,
       feeSharing,
       feeShares: feeSharing ? parsedShares : undefined,
@@ -851,9 +855,7 @@ export default function LaunchPage() {
 
     if (CONTRACTS.factory) {
       const fee = parseEther(CHAIN_CONFIG.creationFee);
-      const buyWei = parseEther(
-        Number.isFinite(buyEthNum) ? String(buyEthNum) : "0"
-      );
+      const seedWei = parseEther(String(launchSeedEth(buyEthNum)));
 
       setStatus("pending");
       try {
@@ -887,8 +889,8 @@ export default function LaunchPage() {
           abi: PUMP_ROBIN_FACTORY_ABI,
           functionName: "createToken",
           args: [name, symbol, imagePreview, description, antiSnipe],
-          // One tx: creation fee + seed/buy — Uniswap pool + optional anti-snipe arm
-          value: fee + buyWei,
+          // creation fee + Uniswap seed (LP + creator buy)
+          value: fee + seedWei,
         });
       } catch (err) {
         setStatus("error");
@@ -1318,7 +1320,8 @@ export default function LaunchPage() {
               />
               <SectionLabel>Ownership</SectionLabel>
               <p className="mt-1 text-[13px] text-rh-muted">
-                Buy shares before anyone else.
+                How much of supply you buy at launch on Uniswap (max ~50% — half
+                of your seed buys tokens, half locks as LP).
               </p>
 
               <div className="relative mt-4">
@@ -1328,7 +1331,7 @@ export default function LaunchPage() {
                   step="any"
                   value={initialBuyEth}
                   onChange={(e) => setBuyEthManual(e.target.value)}
-                  placeholder="0.0"
+                  placeholder={CHAIN_CONFIG.minSeedLiquidityEth}
                   className={cn(
                     fieldClass,
                     "pr-16 text-2xl font-medium tracking-tight placeholder:text-rh-dim/80"
@@ -1349,17 +1352,22 @@ export default function LaunchPage() {
                       : "— connect to see"}
                   </span>
                 </p>
-                {buyEthNum > 0 ? (
+                {buyEthNum > 0 || ownershipPct != null ? (
                   <p className="tabular-nums text-rh-lime">
-                    You get ≈ {receivedPct < 0.01 ? receivedPct.toFixed(4) : receivedPct.toFixed(2)}%
-                    of supply
+                    You get ≈{" "}
+                    {receivedPct < 0.01
+                      ? receivedPct.toFixed(4)
+                      : receivedPct.toFixed(2)}
+                    % of supply
                   </p>
                 ) : (
-                  <p className="text-rh-dim">Pick a % or enter ETH</p>
+                  <p className="text-rh-dim">
+                    Default seeds {CHAIN_CONFIG.minSeedLiquidityEth} ETH LP
+                  </p>
                 )}
               </div>
 
-              <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-5">
+              <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
                 {preview.ownershipCosts.map(({ pct, eth }) => (
                   <button
                     key={pct}
@@ -1383,10 +1391,13 @@ export default function LaunchPage() {
               </div>
 
               <p className="mt-3 text-[11px] leading-relaxed text-rh-dim">
-                Your ETH seeds a Uniswap V3 TOKEN/WETH pool (1% fee, LP locked forever)
-                so GMGN and DEX Screener can chart from block 0. About half seeds
-                liquidity; the rest buys you tokens in the same tx. Plus the{" "}
-                {CHAIN_CONFIG.creationFee} ETH creation fee.
+                Your seed ETH splits into locked Uniswap V3 LP (min{" "}
+                {CHAIN_CONFIG.minSeedLiquidityEth} ETH) and a creator buy in the
+                same tx
+                {seedEthNum > 0
+                  ? ` — ≈ ${seedSplit.lpEth.toFixed(4)} LP + ${seedSplit.buyEth.toFixed(4)} buy`
+                  : ""}
+                . Plus the {CHAIN_CONFIG.creationFee} ETH creation fee.
               </p>
 
               <div className="mt-3 rounded-2xl border border-amber-400/20 bg-gradient-to-r from-amber-500/15 to-amber-500/5 px-4 py-3.5 text-sm leading-snug text-amber-100/95">
@@ -1395,9 +1406,10 @@ export default function LaunchPage() {
                   {minEthNeeded.toFixed(4)} ETH
                 </span>
                 <span className="mt-1 block text-[11px] text-amber-100/70">
-                  {CHAIN_CONFIG.creationFee} creation
-                  {buyEthNum > 0
-                    ? ` + ${buyEthNum.toFixed(4)} ownership (${receivedPct.toFixed(2)}%)`
+                  {CHAIN_CONFIG.creationFee} creation + {seedEthNum.toFixed(4)}{" "}
+                  seed
+                  {receivedPct > 0
+                    ? ` (≈${receivedPct.toFixed(1)}% ownership)`
                     : ""}
                   {featureBoost
                     ? ` + ${CHAIN_CONFIG.featureBoostEth} feature`

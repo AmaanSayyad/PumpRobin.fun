@@ -21,6 +21,26 @@ export function formatEth(amount: number, decimals = 4): string {
   return amount.toFixed(decimals);
 }
 
+/** Compact token amount for quotes (handles huge meme supplies). */
+export function formatTokenAmount(amount: string | number): string {
+  const n = typeof amount === "number" ? amount : Number(amount);
+  if (!Number.isFinite(n) || n === 0) return "0";
+  if (Math.abs(n) >= 1_000_000) return `${(n / 1_000_000).toFixed(2)}M`;
+  if (Math.abs(n) >= 1_000) return `${(n / 1_000).toFixed(2)}K`;
+  if (Math.abs(n) < 0.0001) return n.toExponential(2);
+  if (Math.abs(n) < 1) return n.toFixed(6).replace(/\.?0+$/, "");
+  return n.toFixed(2);
+}
+
+/** Uniswap quote gasFeeUSD → readable "$0.005" */
+export function formatGasUsd(usd: string | number): string {
+  const n = typeof usd === "number" ? usd : Number(usd);
+  if (!Number.isFinite(n) || n <= 0) return "$0";
+  if (n < 0.01) return `$${n.toFixed(3)}`;
+  if (n < 1) return `$${n.toFixed(2)}`;
+  return `$${n.toFixed(2)}`;
+}
+
 export function formatPriceEth(price: number): string {
   if (!Number.isFinite(price) || price === 0) return "0 ETH";
   if (price < 1e-9) return `${price.toExponential(3)} ETH`;

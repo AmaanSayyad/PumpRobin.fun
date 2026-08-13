@@ -93,53 +93,75 @@ export function applyFee(ethAmount: number, feeBps = CHAIN_CONFIG.tradeFeeBps) {
 }
 
 /**
- * ETH the buyer must send (pre-fee) to receive `tokenAmount` from the curve.
- * Inverse of constant-product buy with trade fee applied to input.
+ * How `seedAndGraduate` splits ETH: half LP / half buy, LP floored at min seed.
+ * Matches BondingCurve.sol.
  */
-export function ethInForTokenAmount(
-  tokenAmount: number,
-  virtualEth: number,
-  virtualTokens: number,
-  feeBps = CHAIN_CONFIG.tradeFeeBps
-): number {
-  if (!Number.isFinite(tokenAmount) || tokenAmount <= 0) return 0;
-  if (tokenAmount >= virtualTokens) return Number.POSITIVE_INFINITY;
-  const ethAfterFee = (tokenAmount * virtualEth) / (virtualTokens - tokenAmount);
-  const denom = 1 - feeBps / 10_000;
-  if (denom <= 0) return Number.POSITIVE_INFINITY;
-  return ethAfterFee / denom;
-}
-
-/** ETH to buy `pct`% of total supply at launch (includes trade fee). */
-export function ethInForSupplyPercent(pct: number, supply = DEFAULT_SUPPLY): number {
-  if (!Number.isFinite(pct) || pct <= 0) return 0;
-  const tokens = (Math.max(1, supply) * pct) / 100;
-  return ethInForTokenAmount(
-    tokens,
-    virtualEthForSupply(supply),
-    virtualTokensForSupply(supply)
-  );
+export function splitLaunchSeed(seedEth: number): {
+  lpEth: number;
+  buyEth: number;
+} {
+  const minSeed = Number(CHAIN_CONFIG.minSeedLiquidityEth);
+  if (!Number.isFinite(seedEth) || seedEth <= 0) {
+    return { lpEth: 0, buyEth: 0 };
+  }
+  let buyEth = seedEth / 2;
+  let lpEth = seedEth - buyEth;
+  if (lpEth < minSeed) {
+    lpEth = minSeed;
+    buyEth = Math.max(0, seedEth - lpEth);
+  }
+  return { lpEth, buyEth };
 }
 
 /**
- * Exact % of total supply received for a given ETH buy at launch
- * (mirrors BondingCurve.buy: fee taken from input, then x·y=k).
+ * Seed ETH (excludes creation fee) for ~`pct`% of supply via the Uniswap
+ * creator buy. Pool is seeded with ~full supply + LP ETH, so
+ * ownership ≈ buyEth / (lpEth + buyEth). Cap is ~50% (half/half split).
  */
-export function supplyPercentForEthIn(ethIn: number, supply = DEFAULT_SUPPLY): number {
-  if (!Number.isFinite(ethIn) || ethIn <= 0) return 0;
-  const { afterFee } = applyFee(ethIn);
-  const { tokensOut } = calculateBuyReturn(
-    afterFee,
-    virtualEthForSupply(supply),
-    virtualTokensForSupply(supply)
-  );
-  return (tokensOut / Math.max(1, supply)) * 100;
+export function ethInForSupplyPercent(pct: number, _supply = DEFAULT_SUPPLY): number {
+  const minSeed = Number(CHAIN_CONFIG.minSeedLiquidityEth);
+  if (!Number.isFinite(pct) || pct <= 0) {
+    // Slightly above min seed — contract requires seed > MIN_SEED when LP is floored
+    return minSeed * 1.001;
+  }
+  if (pct >= 50) {
+    // Exact half/half at 2× min seed → ~50% of supply
+    return minSeed * 2;
+  }
+  const p = pct / 100;
+  // LP floored at minSeed: buy = minSeed * p / (1-p), seed = minSeed / (1-p)
+  return minSeed / (1 - p);
 }
 
-/** Min ETH needed in wallet to cover creation fee + optional first buy + optional feature + gas. */
+/**
+ * Estimated % of total supply from a launch seed amount (Uniswap creator buy).
+ */
+export function supplyPercentForEthIn(
+  seedEth: number,
+  _supply = DEFAULT_SUPPLY
+): number {
+  const { lpEth, buyEth } = splitLaunchSeed(seedEth);
+  const denom = lpEth + buyEth;
+  if (denom <= 0 || buyEth <= 0) return 0;
+  return Math.min(50, (buyEth / denom) * 100);
+}
+
+/**
+ * Min ETH in wallet: creation fee + seed (≥ min liquidity) + gas (+ feature).
+ * `initialBuyEth` is the seed amount sent with createToken (LP + creator buy).
+ */
 export function minEthToLaunch(initialBuyEth = 0, featureBoost = false): number {
   const creation = Number(CHAIN_CONFIG.creationFee);
+  const minSeed = Number(CHAIN_CONFIG.minSeedLiquidityEth) * 1.001;
   const buffer = Number(CHAIN_CONFIG.launchGasBufferEth);
   const feature = featureBoost ? Number(CHAIN_CONFIG.featureBoostEth) : 0;
-  return creation + Math.max(0, initialBuyEth) + buffer + feature;
+  const seed = Math.max(minSeed, Number.isFinite(initialBuyEth) ? initialBuyEth : 0);
+  return creation + seed + buffer + feature;
+}
+
+/** Seed wei to attach to createToken (never below min Uniswap liquidity). */
+export function launchSeedEth(initialBuyEth = 0): number {
+  const minSeed = Number(CHAIN_CONFIG.minSeedLiquidityEth) * 1.001;
+  const n = Number.isFinite(initialBuyEth) ? initialBuyEth : 0;
+  return Math.max(minSeed, n);
 }

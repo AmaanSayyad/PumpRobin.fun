@@ -284,6 +284,10 @@ export async function addTrade(trade: TradeRecord): Promise<PlatformState> {
     const sb = getSupabaseAdmin();
     const { error } = await sb.from("pumprobin_trades").insert(tradeToRow(trade));
     if (error) {
+      // Ignore duplicate primary key (already indexed)
+      if (error.code === "23505") {
+        return readSupabaseState();
+      }
       console.error("[registry] Supabase insert trade failed:", error);
       throw new Error(error.message);
     }
@@ -291,9 +295,79 @@ export async function addTrade(trade: TradeRecord): Promise<PlatformState> {
   }
 
   const state = await readFileState();
-  state.trades.unshift(trade);
-  await writeFileState(state);
+  if (!state.trades.some((t) => t.id === trade.id)) {
+    state.trades.unshift(trade);
+    await writeFileState(state);
+  }
   return state;
+}
+
+/** Insert many trades, skipping ids that already exist. Returns how many were new. */
+export async function addTradesIfNew(
+  trades: TradeRecord[]
+): Promise<{ added: number }> {
+  if (trades.length === 0) return { added: 0 };
+
+  const txKeys = (t: TradeRecord) => {
+    // ids: `${addr}-${txHash}` or `${addr}-${txHash}-${logIndex}`
+    const m = t.id.toLowerCase().match(/^(0x[a-f0-9]{40})-(0x[a-f0-9]{64})/);
+    return m ? `${m[1]}-${m[2]}` : t.id.toLowerCase();
+  };
+
+  if (isSupabaseConfigured()) {
+    const sb = getSupabaseAdmin();
+    const tokenAddrs = [
+      ...new Set(trades.map((t) => t.tokenAddress.toLowerCase())),
+    ];
+    const { data: existing } = await sb
+      .from("pumprobin_trades")
+      .select("id")
+      .in("token_address", tokenAddrs);
+    const haveIds = new Set((existing ?? []).map((r: { id: string }) => r.id));
+    const haveTx = new Set(
+      (existing ?? []).map((r: { id: string }) => {
+        const m = r.id.toLowerCase().match(/^(0x[a-f0-9]{40})-(0x[a-f0-9]{64})/);
+        return m ? `${m[1]}-${m[2]}` : r.id.toLowerCase();
+      })
+    );
+    const fresh = trades.filter((t) => {
+      if (haveIds.has(t.id)) return false;
+      if (haveTx.has(txKeys(t))) return false;
+      return true;
+    });
+    if (fresh.length === 0) return { added: 0 };
+    const { error } = await sb
+      .from("pumprobin_trades")
+      .insert(fresh.map(tradeToRow));
+    if (error) {
+      console.error("[registry] Supabase bulk insert trades failed:", error);
+      let added = 0;
+      for (const t of fresh) {
+        try {
+          await addTrade(t);
+          added++;
+        } catch {
+          /* skip */
+        }
+      }
+      return { added };
+    }
+    return { added: fresh.length };
+  }
+
+  const state = await readFileState();
+  const haveIds = new Set(state.trades.map((t) => t.id));
+  const haveTx = new Set(state.trades.map((t) => txKeys(t)));
+  let added = 0;
+  for (const t of trades) {
+    if (haveIds.has(t.id) || haveTx.has(txKeys(t))) continue;
+    state.trades.unshift(t);
+    haveIds.add(t.id);
+    haveTx.add(txKeys(t));
+    added++;
+  }
+  if (added > 0) await writeFileState(state);
+  return { added };
 }
 
 export async function updateTokenCurve(

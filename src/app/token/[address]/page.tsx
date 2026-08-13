@@ -3,13 +3,14 @@
 import { use, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
-import { useAccount, useConfig } from "wagmi";
-import type { Address } from "viem";
+import { useAccount, useBalance, useConfig, useReadContract } from "wagmi";
+import { formatEther, formatUnits, type Address } from "viem";
 import { useAppStore } from "@/lib/store";
 import {
   CHAIN_CONFIG,
   explorerAddressUrl,
   explorerTxUrl,
+  robinhoodChain,
 } from "@/lib/chain";
 import { RhButton } from "@/components/ui/rh-button";
 import { ProgressBar } from "@/components/ui/progress-bar";
@@ -24,7 +25,9 @@ import { DEFAULT_SUPPLY } from "@/lib/curve";
 import {
   cn,
   formatEth,
+  formatGasUsd,
   formatPriceEth,
+  formatTokenAmount,
   friendlyWalletError,
   shortenAddress,
   timeAgo,
@@ -34,6 +37,7 @@ import {
   getUniswapQuote,
 } from "@/lib/uniswap-trade";
 import { executeCurveTrade } from "@/lib/curve-trade";
+import { ERC20_ABI } from "@/lib/contracts";
 import {
   ArrowLeft,
   ArrowUpRight,
@@ -44,6 +48,10 @@ import {
   Globe,
 } from "lucide-react";
 import { CreatorIcon } from "@/components/creator-icon";
+
+const BUY_WALLET_PCTS = [25, 50, 75, 100] as const;
+/** Leave a little ETH for gas when using 100% */
+const BUY_GAS_BUFFER_ETH = 0.0003;
 
 function normalizeHref(url?: string): string | null {
   if (!url?.trim()) return null;
@@ -91,9 +99,14 @@ export default function TokenPage({
   );
   const tokenTrades = useMemo(
     () =>
-      trades.filter(
-        (t) => t.tokenAddress.toLowerCase() === address.toLowerCase()
-      ),
+      trades
+        .filter(
+          (t) => t.tokenAddress.toLowerCase() === address.toLowerCase()
+        )
+        .sort(
+          (a, b) =>
+            new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+        ),
     [trades, address]
   );
 
@@ -111,7 +124,49 @@ export default function TokenPage({
     Boolean(activeWallet) &&
     (isConnected || status === "connected" || status === "reconnecting");
 
-  // Refresh live curve reserves so raised / mcap / holders aren't stale
+  const { data: ethBalance } = useBalance({
+    address: activeWallet,
+    chainId: robinhoodChain.id,
+  });
+  const { data: tokenBalRaw } = useReadContract({
+    address: token?.address as Address | undefined,
+    abi: ERC20_ABI,
+    functionName: "balanceOf",
+    args: activeWallet ? [activeWallet] : undefined,
+    chainId: robinhoodChain.id,
+    query: { enabled: Boolean(activeWallet && token?.address) },
+  });
+
+  const applyBuyPct = (pct: number) => {
+    const bal = ethBalance ? Number(formatEther(ethBalance.value)) : 0;
+    if (!(bal > 0)) {
+      setError("Connect a wallet with ETH to use % presets");
+      return;
+    }
+    const spendable = Math.max(0, bal - BUY_GAS_BUFFER_ETH);
+    const eth = (spendable * pct) / 100;
+    setAmount(eth > 0 ? eth.toFixed(6).replace(/\.?0+$/, "") : "0");
+    setBusy(false);
+    setError("");
+  };
+
+  const applySellPct = (pct: number) => {
+    if (tokenBalRaw == null) {
+      setError("Connect a wallet that holds this token to use % presets");
+      return;
+    }
+    const bal = Number(formatUnits(tokenBalRaw as bigint, 18));
+    if (!(bal > 0)) {
+      setError("No token balance");
+      return;
+    }
+    const qty = (bal * pct) / 100;
+    setAmount(qty > 0 ? qty.toFixed(6).replace(/\.?0+$/, "") : "0");
+    setBusy(false);
+    setError("");
+  };
+
+  // Refresh live pool/curve stats + index Uniswap swaps into recent trades
   useEffect(() => {
     if (!address) return;
     let cancelled = false;
@@ -122,12 +177,15 @@ export default function TokenPage({
         });
         if (!res.ok || cancelled) return;
         const data = await res.json();
-        if (data.token && !cancelled) {
+        if (cancelled) return;
+        if (data.token) {
           upsertToken({
             ...data.token,
             createdAt: new Date(data.token.createdAt),
           });
         }
+        // Reload trades so Uniswap swaps indexed on the server show up
+        await refreshTokens();
       } catch {
         /* best-effort */
       }
@@ -135,19 +193,7 @@ export default function TokenPage({
     return () => {
       cancelled = true;
     };
-  }, [address, upsertToken]);
-
-  const chartData = useMemo(
-    () =>
-      [...tokenTrades]
-        .reverse()
-        .map((t, i) => ({
-          time: i,
-          price: t.price,
-          volume: t.ethAmount,
-        })),
-    [tokenTrades]
-  );
+  }, [address, upsertToken, refreshTokens]);
 
   const topHolders = useMemo(() => {
     if (!token) return [];
@@ -504,7 +550,6 @@ export default function TokenPage({
             tokenAddress={token.address}
             poolAddress={poolFromMeta}
             graduated={token.graduated}
-            chartData={chartData}
           />
 
           <div className="grid grid-cols-2 gap-px bg-rh-raised sm:grid-cols-3 lg:grid-cols-5">
@@ -533,11 +578,19 @@ export default function TokenPage({
                 ),
                 hint: "Wallets with balance",
               },
-              {
-                label: "Raised (curve ETH)",
-                value: `${formatEth(token.ethReserves)} ETH`,
-                hint: `Of ${CHAIN_CONFIG.graduationThreshold} ETH to graduate`,
-              },
+              token.graduated
+                ? {
+                    label: "Liquidity",
+                    value: `${formatEth(token.ethReserves)} ETH`,
+                    hint: token.metadata?.pooledWeth != null
+                      ? `${formatEth(token.metadata.pooledWeth)} WETH in pool`
+                      : "Uniswap V3 pool TVL",
+                  }
+                : {
+                    label: "Raised (curve ETH)",
+                    value: `${formatEth(token.ethReserves)} ETH`,
+                    hint: `Of ${CHAIN_CONFIG.graduationThreshold} ETH to graduate`,
+                  },
             ].map((s) => (
               <div key={s.label} className="bg-black p-4 text-center">
                 <p className="mb-1 text-xs text-rh-muted">{s.label}</p>
@@ -553,7 +606,7 @@ export default function TokenPage({
             <ProgressBar value={token.progress} graduated={token.graduated} />
             <p className="mt-2 text-xs text-rh-dim">
               {token.graduated
-                ? "Graduated — Uniswap V3 1% TOKEN/WETH · LP locked. Trade via Uniswap routing."
+                ? "Live on Uniswap V3 (1% TOKEN/WETH) · LP locked. Stats from pool spot."
                 : `${formatEth(CHAIN_CONFIG.graduationThreshold - token.ethReserves)} ETH until graduation`}
             </p>
           </div>
@@ -660,30 +713,38 @@ export default function TokenPage({
             />
 
             <div className="mb-4 flex gap-2">
-              {(tradeMode === "buy"
-                ? ["0.01", "0.05", "0.1", "0.5"]
-                : ["1", "10", "100", "1000"]
-              ).map((v) => (
+              {BUY_WALLET_PCTS.map((pct) => (
                 <button
-                  key={v}
+                  key={pct}
                   type="button"
                   onClick={() => {
-                    setAmount(v);
-                    setBusy(false);
+                    if (tradeMode === "buy") applyBuyPct(pct);
+                    else applySellPct(pct);
                   }}
                   className="flex-1 rounded-full border border-rh-raised py-1.5 text-xs text-rh-muted hover:border-rh-lime/40"
                 >
-                  {v}
+                  {pct}%
                 </button>
               ))}
             </div>
 
             {token.graduated && quoteOut && (
-              <p className="mb-3 text-xs text-rh-muted">
-                Est. out:{" "}
-                <span className="font-mono text-white">{quoteOut}</span>
-                {quoteGasUsd ? ` · gas ~$${quoteGasUsd}` : ""}
-              </p>
+              <div className="mb-3 space-y-1 text-xs text-rh-muted">
+                <p>
+                  You receive ≈{" "}
+                  <span className="font-mono text-white">
+                    {tradeMode === "buy"
+                      ? `${formatTokenAmount(quoteOut)} ${token.symbol}`
+                      : `${formatEth(Number(quoteOut))} ETH`}
+                  </span>
+                </p>
+                {quoteGasUsd != null && Number(quoteGasUsd) > 0 && (
+                  <p className="text-rh-dim">
+                    Network gas ≈ {formatGasUsd(quoteGasUsd)} (paid in ETH,
+                    separate from the swap)
+                  </p>
+                )}
+              </div>
             )}
 
             {error && (

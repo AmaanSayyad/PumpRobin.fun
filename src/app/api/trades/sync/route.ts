@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { enrichToken } from "@/lib/data";
+import { enrichToken, tradeExecutionPrice } from "@/lib/data";
 import {
   addTrade,
   readPlatformState,
@@ -56,6 +56,12 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Token not found" }, { status: 404 });
   }
 
+  const execPrice = tradeExecutionPrice({
+    ethAmount,
+    tokenAmount: Number(tokenAmount) || 0,
+    price: Number(price) || 0,
+  });
+
   const trade = {
     id: txHash
       ? `${tokenAddress}-${txHash}`
@@ -65,29 +71,41 @@ export async function POST(request: Request) {
     isBuy: Boolean(isBuy),
     ethAmount,
     tokenAmount: Number(tokenAmount) || 0,
-    price: Number(price) || 0,
+    price: execPrice,
     feeEth: Number(feeEth) || 0,
     timestamp: new Date().toISOString(),
   };
 
+  const isGraduated = Boolean(graduated ?? token.graduated);
+
   await updateTokenCurve(tokenAddress, {
-    virtualEthReserves: virtualEthReserves ?? token.virtualEthReserves,
-    virtualTokenReserves: virtualTokenReserves ?? token.virtualTokenReserves,
-    realEthReserves: realEthReserves ?? token.realEthReserves,
-    realTokenReserves: realTokenReserves ?? token.realTokenReserves,
-    graduated: graduated ?? token.graduated,
+    ...(virtualEthReserves != null ? { virtualEthReserves } : {}),
+    ...(virtualTokenReserves != null ? { virtualTokenReserves } : {}),
+    ...(realEthReserves != null ? { realEthReserves } : {}),
+    ...(realTokenReserves != null ? { realTokenReserves } : {}),
+    graduated: isGraduated,
     metadata: (() => {
       const supply = token.metadata?.supply ?? 1_000_000_000;
-      const tradePrice = Number(price) || 0;
-      const mcap = tradePrice * supply;
+      const mcap = execPrice * supply;
+      const launchFdv = (1.3 / 1_073_000_000) * supply;
       const prevAth = token.metadata?.athMarketCapEth ?? 0;
-      const athMarketCapEth = Math.max(prevAth, mcap);
+      const prevAthIsVirtualFloor =
+        isGraduated &&
+        prevAth > 0 &&
+        Math.abs(prevAth - launchFdv) / launchFdv < 0.05;
+      const athMarketCapEth = Math.max(
+        prevAthIsVirtualFloor ? 0 : prevAth,
+        mcap
+      );
       return {
         ...token.metadata,
         ...(uniswapPool ? { uniswapPool } : {}),
+        ...(execPrice > 0 && isGraduated
+          ? { spotPriceEth: execPrice, spotAt: new Date().toISOString() }
+          : {}),
         athMarketCapEth,
         athAt:
-          athMarketCapEth > prevAth
+          athMarketCapEth > (prevAthIsVirtualFloor ? 0 : prevAth)
             ? new Date().toISOString()
             : token.metadata?.athAt,
       };

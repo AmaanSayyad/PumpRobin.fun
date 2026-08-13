@@ -31,6 +31,16 @@ export interface LaunchMetadata {
   feeShares?: Array<{ address: string; pct: number }>;
   /** Set after bonding-curve graduation */
   uniswapPool?: string;
+  /** Live Uniswap V3 spot (ETH per whole token) — preferred over curve virtuals when graduated */
+  spotPriceEth?: number;
+  /** Approx pool TVL in ETH (≈ 2 × pooled WETH) */
+  liquidityEth?: number;
+  pooledWeth?: number;
+  pooledToken?: number;
+  /** ISO timestamp when spot was last refreshed from chain */
+  spotAt?: string;
+  /** Holder count from explorer (graduated); overrides trade-derived when higher */
+  holdersCount?: number;
   /** All-time high fully diluted market cap in ETH */
   athMarketCapEth?: number;
   /** ISO timestamp when ATH was last updated */
@@ -219,7 +229,28 @@ export const EMPTY_STATS: PlatformStats = {
   avgGraduationTime: null,
 };
 
+/** Prefer execution price (eth/token) — curve `getPrice()` is wrong after instant Uniswap seed. */
+export function tradeExecutionPrice(t: {
+  ethAmount: number;
+  tokenAmount: number;
+  price: number;
+}): number {
+  if (t.tokenAmount > 0 && t.ethAmount > 0) {
+    return t.ethAmount / t.tokenAmount;
+  }
+  return t.price > 0 ? t.price : 0;
+}
+
 function priceOf(token: TokenRecord): number {
+  const spot = token.metadata?.spotPriceEth;
+  if (
+    token.graduated &&
+    typeof spot === "number" &&
+    Number.isFinite(spot) &&
+    spot > 0
+  ) {
+    return spot;
+  }
   if (token.virtualTokenReserves <= 0) return 0;
   return token.virtualEthReserves / token.virtualTokenReserves;
 }
@@ -287,7 +318,8 @@ function priceChange24h(
         new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
     )[0];
 
-  const base = older?.price ?? recent?.price;
+  const baseTrade = older ?? recent;
+  const base = baseTrade ? tradeExecutionPrice(baseTrade) : 0;
   if (!base || base === 0) return 0;
   return ((currentPrice - base) / base) * 100;
 }
@@ -300,20 +332,30 @@ export function enrichToken(
   const since24h = Date.now() - 24 * 60 * 60 * 1000;
   const supply = token.metadata?.supply ?? 1_000_000_000;
   const marketCap = price * supply;
+  /** Classic bonding-curve open FDV — NOT the Uniswap seed price */
   const launchFdv = (1.3 / 1_073_000_000) * supply;
 
   let athFromTrades = 0;
   for (const t of trades) {
     if (t.tokenAddress.toLowerCase() !== token.address.toLowerCase()) continue;
-    if (t.price > 0) athFromTrades = Math.max(athFromTrades, t.price * supply);
+    const px = tradeExecutionPrice(t);
+    if (px > 0) athFromTrades = Math.max(athFromTrades, px * supply);
   }
 
-  const athMarketCap = Math.max(
-    marketCap,
-    launchFdv,
-    athFromTrades,
-    token.metadata?.athMarketCapEth ?? 0
-  );
+  const prevAth = token.metadata?.athMarketCapEth ?? 0;
+  // Drop ATH that was frozen at bogus virtual-curve FDV after instant Uniswap seed
+  const prevAthIsVirtualFloor =
+    token.graduated &&
+    prevAth > 0 &&
+    Math.abs(prevAth - launchFdv) / launchFdv < 0.05;
+
+  const athMarketCap = token.graduated
+    ? Math.max(
+        marketCap,
+        athFromTrades,
+        prevAthIsVirtualFloor ? 0 : prevAth
+      )
+    : Math.max(marketCap, launchFdv, athFromTrades, prevAth);
 
   const holders = uniqueHolders(trades, token.address, token.bondingCurve);
   const soldFromCurve =
@@ -323,8 +365,14 @@ export function enrichToken(
   // If curve has sold tokens but trades weren't indexed, show at least 1 holder
   const holdersFixed =
     holders > 0 ? holders : soldFromCurve > 1e-6 ? 1 : 0;
+  const explorerHolders = token.metadata?.holdersCount;
+  const holdersFinal =
+    typeof explorerHolders === "number" && explorerHolders > holdersFixed
+      ? explorerHolders
+      : holdersFixed;
 
   const graduationEth = CHAIN_CONFIG.graduationThreshold;
+  const liquidityEth = token.metadata?.liquidityEth;
 
   return {
     address: token.address,
@@ -339,13 +387,16 @@ export function enrichToken(
     marketCap,
     athMarketCap,
     volume24h: volumeInWindow(trades, token.address, since24h),
-    holders: holdersFixed,
+    holders: holdersFinal,
     progress: token.graduated
       ? 100
       : Math.min(100, (token.realEthReserves / graduationEth) * 100),
     graduated: token.graduated,
     priceChange24h: priceChange24h(trades, token.address, price),
-    ethReserves: token.realEthReserves,
+    ethReserves:
+      token.graduated && typeof liquidityEth === "number"
+        ? liquidityEth
+        : token.realEthReserves,
     virtualEthReserves: token.virtualEthReserves,
     virtualTokenReserves: token.virtualTokenReserves,
     realTokenReserves: token.realTokenReserves,

@@ -111,5 +111,5 @@ export function explorerTxUrl(txHash: string): string {
   return `${EXPLORER}/tx/${txHash}`;
 }
 
-/** Ownership quick-select presets (bags.fm-style) */
-export const OWNERSHIP_PRESETS = [1, 10, 30, 50, 80] as const;
+/** Ownership quick-select — max ~50% (half of seed buys on Uniswap, half LP). */
+export const OWNERSHIP_PRESETS = [1, 10, 25, 50] as const;
