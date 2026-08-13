@@ -17,8 +17,10 @@ import { CHAIN_CONFIG } from "@/lib/chain";
 
 const DECIMALS = 18;
 /** 2% slippage cushion on estimated out (minTokens / minEth) */
-const SLIPPAGE_BPS = 200n;
+const SLIPPAGE_BPS = BigInt(200);
 const FEE_BPS = BigInt(CHAIN_CONFIG.tradeFeeBps);
+const BPS_DENOM = BigInt(10_000);
+const ZERO = BigInt(0);
 
 export type CurveTradeResult = {
   txHash: Hash;
@@ -164,18 +166,18 @@ export async function executeCurveTrade(input: {
       }) as Promise<bigint>,
     ]);
     const feeBps = FEE_BPS;
-    const afterFee = value - (value * feeBps) / 10_000n;
+    const afterFee = value - (value * feeBps) / BPS_DENOM;
     const k = vEth * vTok;
     const newEth = vEth + afterFee;
     const newTok = k / newEth;
     const tokensOut = vTok - newTok;
-    const minTokens = (tokensOut * (10_000n - SLIPPAGE_BPS)) / 10_000n;
+    const minTokens = (tokensOut * (BPS_DENOM - SLIPPAGE_BPS)) / BPS_DENOM;
 
     txHash = await writeContract(config, {
       address: curve,
       abi: BONDING_CURVE_ABI,
       functionName: "buy",
-      args: [minTokens > 0n ? minTokens : 0n],
+      args: [minTokens > ZERO ? minTokens : ZERO],
       value,
     });
   } else {
@@ -187,7 +189,7 @@ export async function executeCurveTrade(input: {
       args: [trader],
     })) as bigint;
 
-    if (balance === 0n) {
+    if (balance === ZERO) {
       throw new Error(
         "You have 0 tokens in this wallet — switch to Buy and purchase first. Sell only works after you hold tokens."
       );
@@ -232,14 +234,14 @@ export async function executeCurveTrade(input: {
     const newEth = k / newTok;
     const ethOut = vEth - newEth;
     const feeBps = FEE_BPS;
-    const afterFee = ethOut - (ethOut * feeBps) / 10_000n;
-    const minEth = (afterFee * (10_000n - SLIPPAGE_BPS)) / 10_000n;
+    const afterFee = ethOut - (ethOut * feeBps) / BPS_DENOM;
+    const minEth = (afterFee * (BPS_DENOM - SLIPPAGE_BPS)) / BPS_DENOM;
 
     txHash = await writeContract(config, {
       address: curve,
       abi: BONDING_CURVE_ABI,
       functionName: "sell",
-      args: [tokenAmount, minEth > 0n ? minEth : 0n],
+      args: [tokenAmount, minEth > ZERO ? minEth : ZERO],
     });
   }
 
@@ -256,7 +258,12 @@ export async function executeCurveTrade(input: {
     isBuy,
     ethAmount: decoded?.ethAmount ?? (isBuy ? amt : state.price * amt),
     tokenAmount: decoded?.tokenAmount ?? (isBuy ? 0 : amt),
+    graduated: state.graduated,
+    uniswapPool: state.uniswapPool,
+    realEthReserves: state.realEthReserves,
+    realTokenReserves: state.realTokenReserves,
+    virtualEthReserves: state.virtualEthReserves,
+    virtualTokenReserves: state.virtualTokenReserves,
     price: decoded?.price ?? state.price,
-    ...state,
   };
 }
