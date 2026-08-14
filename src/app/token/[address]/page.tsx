@@ -404,10 +404,13 @@ export default function TokenPage({
     setError("");
     try {
       if (token.graduated) {
-        if (hasTransferTax && token.bondingCurve) {
+        if (hasTransferTax) {
+          if (tradeMode === "buy" && !token.bondingCurve) {
+            throw new Error("Bonding curve missing — refresh and try again");
+          }
           const result = await executeGraduatedCurveTrade({
             config: wagmiConfig,
-            curve: token.bondingCurve as Address,
+            curve: (token.bondingCurve || token.address) as Address,
             token: token.address as Address,
             trader,
             isBuy: tradeMode === "buy",
@@ -913,8 +916,9 @@ export default function TokenPage({
 
             {hasTransferTax && (
               <p className="mb-3 text-[11px] leading-snug text-rh-dim">
-                Sell here on PumpRobin — MetaMask Swap cannot quote tokens with a
-                transfer tax. This pool is tiny, so large sells return very little ETH.
+                Sell here on PumpRobin (handles the 2% transfer tax). MetaMask Swap
+                often fails on these pools. Liquidity is tiny, so large sells return
+                very little ETH.
               </p>
             )}
 

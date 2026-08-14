@@ -12,7 +12,7 @@ import {
   type Address,
   type Hash,
 } from "viem";
-import { BONDING_CURVE_ABI, ERC20_ABI, PUMP_ROBIN_TOKEN_ABI } from "@/lib/contracts";
+import { BONDING_CURVE_ABI, CONTRACTS, ERC20_ABI, FOT_UNISWAP_SELLER_ABI, PUMP_ROBIN_TOKEN_ABI } from "@/lib/contracts";
 import { CHAIN_CONFIG } from "@/lib/chain";
 
 const DECIMALS = 18;
@@ -405,11 +405,18 @@ export async function executeGraduatedCurveTrade(input: {
       );
     }
 
+    // FoT tokens: bonding-curve sellOnUniswap pulls then swaps the full amount,
+    // which reverts STF after the 2% tax. Route through FoTUniswapSeller instead.
+    const seller = CONTRACTS.fotSeller;
+    if (!seller) {
+      throw new Error("Sell helper not configured — set NEXT_PUBLIC_FOT_SELLER_ADDRESS");
+    }
+
     const allowance = (await readContract(config, {
       address: token,
       abi: ERC20_ABI,
       functionName: "allowance",
-      args: [trader, curve],
+      args: [trader, seller],
     })) as bigint;
 
     if (allowance < tokenAmount) {
@@ -417,16 +424,16 @@ export async function executeGraduatedCurveTrade(input: {
         address: token,
         abi: ERC20_ABI,
         functionName: "approve",
-        args: [curve, tokenAmount],
+        args: [seller, tokenAmount],
       });
       await waitForTransactionReceipt(config, { hash: approveHash });
     }
 
     txHash = await writeContract(config, {
-      address: curve,
-      abi: BONDING_CURVE_ABI,
-      functionName: "sellOnUniswap",
-      args: [tokenAmount, ZERO],
+      address: seller,
+      abi: FOT_UNISWAP_SELLER_ABI,
+      functionName: "sellTokenForEth",
+      args: [token, tokenAmount, ZERO],
     });
   }
 

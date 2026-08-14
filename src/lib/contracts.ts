@@ -417,12 +417,42 @@ export const UNISWAP_V3_POOL_ABI = [
   },
 ] as const;
 
+export const FOT_UNISWAP_SELLER_ABI = [
+  {
+    type: "function",
+    name: "sellTokenForEth",
+    inputs: [
+      { name: "token", type: "address" },
+      { name: "tokenAmount", type: "uint256" },
+      { name: "minEthOut", type: "uint256" },
+    ],
+    outputs: [{ name: "ethOut", type: "uint256" }],
+    stateMutability: "nonpayable",
+  },
+  {
+    type: "event",
+    name: "Sold",
+    inputs: [
+      { name: "trader", type: "address", indexed: true },
+      { name: "token", type: "address", indexed: true },
+      { name: "tokensIn", type: "uint256", indexed: false },
+      { name: "tokensSwapped", type: "uint256", indexed: false },
+      { name: "ethOut", type: "uint256", indexed: false },
+    ],
+  },
+] as const;
+
 // Set after deploy: NEXT_PUBLIC_FACTORY_ADDRESS in .env.local
 const factoryEnv = process.env.NEXT_PUBLIC_FACTORY_ADDRESS?.trim();
+const fotSellerEnv = process.env.NEXT_PUBLIC_FOT_SELLER_ADDRESS?.trim();
 
 export const CONTRACTS = {
   factory:
     factoryEnv && /^0x[a-fA-F0-9]{40}$/.test(factoryEnv)
       ? (factoryEnv as `0x${string}`)
+      : undefined,
+  fotSeller:
+    fotSellerEnv && /^0x[a-fA-F0-9]{40}$/.test(fotSellerEnv)
+      ? (fotSellerEnv as `0x${string}`)
       : undefined,
 } as const;

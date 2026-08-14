@@ -211,8 +211,13 @@ contract BondingCurve is ReentrancyGuard {
         require(graduated && uniswapPool != address(0), "No pool");
         require(tokenAmount > 0, "No tokens");
 
+        // FoT-safe: older tokens tax user→curve, so only swap what we actually receive.
+        uint256 beforeBal = IERC20(address(token)).balanceOf(address(this));
         IERC20(address(token)).transferFrom(msg.sender, address(this), tokenAmount);
-        IERC20(address(token)).approve(SWAP_ROUTER, tokenAmount);
+        uint256 received = IERC20(address(token)).balanceOf(address(this)) - beforeBal;
+        require(received > 0, "Zero received");
+
+        IERC20(address(token)).approve(SWAP_ROUTER, received);
 
         uint256 wethOut = ISwapRouter02(SWAP_ROUTER).exactInputSingle(
             ISwapRouter02.ExactInputSingleParams({
@@ -220,7 +225,7 @@ contract BondingCurve is ReentrancyGuard {
                 tokenOut: WETH,
                 fee: POOL_FEE,
                 recipient: address(this),
-                amountIn: tokenAmount,
+                amountIn: received,
                 amountOutMinimum: 0,
                 sqrtPriceLimitX96: 0
             })
@@ -232,8 +237,8 @@ contract BondingCurve is ReentrancyGuard {
         (bool sent, ) = msg.sender.call{value: wethOut}("");
         require(sent, "ETH transfer failed");
 
-        uint256 price = tokenAmount > 0 ? (wethOut * 1e18) / tokenAmount : getPrice();
-        emit Trade(msg.sender, false, wethOut, tokenAmount, price);
+        uint256 price = received > 0 ? (wethOut * 1e18) / received : getPrice();
+        emit Trade(msg.sender, false, wethOut, received, price);
     }
 
     function getPendingFees()

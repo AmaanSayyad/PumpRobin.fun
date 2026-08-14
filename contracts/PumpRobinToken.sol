@@ -63,13 +63,14 @@ contract PumpRobinToken is ERC20 {
     }
 
     function _update(address from, address to, uint256 amount) internal override {
-        // Contract-to-contract hops (LP mint, router→pool) must not take tax or
-        // Uniswap mint reverts M0/M1. User↔pool trades still pay 2%.
+        // Skip tax when depositing into any contract (pool / router / curve / seller).
+        // Uniswap V3 pulls user→pool directly; taxing that hop reverts STF/IIA on sells.
+        // Buys still tax: pool (contract) → user (EOA).
         if (
             amount == 0 ||
             _isExempt(from) ||
             _isExempt(to) ||
-            (from.code.length > 0 && to.code.length > 0)
+            to.code.length > 0
         ) {
             super._update(from, to, amount);
             return;

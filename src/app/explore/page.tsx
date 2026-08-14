@@ -80,7 +80,7 @@ const TABS: {
 export default function ExplorePage() {
   const { tokens, hydrated } = useAppStore();
   const [search, setSearch] = useState("");
-  const [tab, setTab] = useState<ViewTab>("bonding");
+  const [tab, setTab] = useState<ViewTab>("graduated");
 
   const counts = useMemo(
     () => ({
@@ -91,7 +91,7 @@ export default function ExplorePage() {
     [tokens]
   );
 
-  const active = TABS.find((t) => t.id === tab) ?? TABS[2];
+  const active = TABS.find((t) => t.id === tab) ?? TABS[1];
 
   const filtered = useMemo(() => {
     let result = [...tokens];
