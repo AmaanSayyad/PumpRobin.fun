@@ -17,6 +17,14 @@ export const metadata: Metadata = {
     description: "Memes, onchain — on Robinhood Chain",
     images: ["/brand/pumprobin-logo.png"],
   },
+  twitter: {
+    card: "summary",
+    site: "@pumprobin_fun",
+    creator: "@pumprobin_fun",
+    title: "PumpRobin.fun",
+    description: "Memes, onchain — on Robinhood Chain",
+    images: ["/brand/pumprobin-logo.png"],
+  },
   icons: {
     icon: "/brand/pumprobin-logo-128.png",
     apple: "/brand/pumprobin-logo-256.png",
