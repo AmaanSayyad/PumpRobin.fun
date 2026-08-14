@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import { TokenCard } from "@/components/tokens/token-card";
 import { useAppStore } from "@/lib/store";
-import { isTokenFeatured } from "@/lib/data";
+import { isTokenFeatured } from "@/lib/data-client";
 import { cn } from "@/lib/utils";
 
 type ViewTab =

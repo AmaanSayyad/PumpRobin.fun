@@ -20,14 +20,18 @@ import {
   SameTickerPanel,
   TopHoldersPanel,
   buildTopHolders,
+  type HolderRow,
 } from "@/components/token-holders";
-import { DEFAULT_SUPPLY } from "@/lib/curve";
+import { DEFAULT_SUPPLY, quotePoolSwap } from "@/lib/curve";
+import { blockscoutVerifyUrl } from "@/lib/indexer-links";
 import {
   cn,
   formatEth,
   formatGasUsd,
   formatPriceEth,
   formatTokenAmount,
+  formatUsd,
+  ethToUsd,
   friendlyWalletError,
   shortenAddress,
   timeAgo,
@@ -36,7 +40,16 @@ import {
   executeUniswapSwap,
   getUniswapQuote,
 } from "@/lib/uniswap-trade";
-import { executeCurveTrade } from "@/lib/curve-trade";
+import {
+  claimCreatorFees,
+  curveSupportsFeeRouter,
+  executeCurveTrade,
+  executeGraduatedCurveTrade,
+  readPendingFees,
+  tokenHasTransferTax,
+  type PendingFees,
+} from "@/lib/curve-trade";
+import { useEthUsd } from "@/lib/use-eth-usd";
 import { ERC20_ABI } from "@/lib/contracts";
 import {
   ArrowLeft,
@@ -117,6 +130,12 @@ export default function TokenPage({
   const [quoteOut, setQuoteOut] = useState<string | null>(null);
   const [quoteGasUsd, setQuoteGasUsd] = useState<string | null>(null);
   const [copied, setCopied] = useState<"ca" | "curve" | null>(null);
+  const [chainHolders, setChainHolders] = useState<HolderRow[] | null>(null);
+  const [usesFeeRouter, setUsesFeeRouter] = useState(false);
+  const [hasTransferTax, setHasTransferTax] = useState(false);
+  const [pendingFees, setPendingFees] = useState<PendingFees | null>(null);
+  const [claimBusy, setClaimBusy] = useState(false);
+  const ethUsd = useEthUsd();
 
   // Prefer address presence — matches header WalletButton / RainbowKit better than isConnected alone
   const activeWallet = (wallet ?? undefined) as Address | undefined;
@@ -195,7 +214,11 @@ export default function TokenPage({
   }, [address, upsertToken, refreshTokens]);
 
   const topHolders = useMemo(() => {
+    if (token?.graduated && chainHolders && chainHolders.length > 0) {
+      return chainHolders;
+    }
     if (!token) return [];
+    if (token.graduated) return chainHolders ?? [];
     return buildTopHolders({
       trades: tokenTrades,
       tokenAddress: token.address,
@@ -205,7 +228,89 @@ export default function TokenPage({
       supply: token.metadata?.supply ?? DEFAULT_SUPPLY,
       limit: 10,
     });
-  }, [token, tokenTrades]);
+  }, [token, tokenTrades, chainHolders]);
+
+  useEffect(() => {
+    if (!token?.graduated) {
+      setChainHolders(null);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch(`/api/tokens/${token.address}/holders`);
+        if (!res.ok || cancelled) return;
+        const data = (await res.json()) as { holders?: HolderRow[] };
+        if (!cancelled && data.holders?.length) {
+          setChainHolders(data.holders);
+        }
+      } catch {
+        /* best-effort */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [token?.address, token?.graduated]);
+
+  useEffect(() => {
+    if (!token?.bondingCurve) {
+      setUsesFeeRouter(false);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      const ok = await curveSupportsFeeRouter(
+        wagmiConfig,
+        token.bondingCurve as Address
+      );
+      if (!cancelled) setUsesFeeRouter(ok);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [token?.bondingCurve, wagmiConfig]);
+
+  useEffect(() => {
+    if (!token?.address) {
+      setHasTransferTax(false);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      const ok = await tokenHasTransferTax(
+        wagmiConfig,
+        token.address as Address
+      );
+      if (!cancelled) setHasTransferTax(ok);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [token?.address, wagmiConfig]);
+
+  useEffect(() => {
+    if (!token?.bondingCurve || !usesFeeRouter) {
+      setPendingFees(null);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const fees = await readPendingFees(
+          wagmiConfig,
+          token.bondingCurve as Address,
+          token.price
+        );
+        if (!cancelled) setPendingFees(fees);
+      } catch {
+        if (!cancelled) setPendingFees(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [token?.bondingCurve, token?.price, usesFeeRouter, wagmiConfig, busy, claimBusy]);
 
   useEffect(() => {
     if (!token?.graduated || !activeWallet || !amount || Number(amount) <= 0) {
@@ -217,6 +322,27 @@ export default function TokenPage({
     const handle = setTimeout(() => {
       void (async () => {
         try {
+          const pooledWeth = token.metadata?.pooledWeth ?? 0;
+          const pooledToken = token.metadata?.pooledToken ?? 0;
+          if (
+            hasTransferTax &&
+            token.bondingCurve &&
+            pooledWeth > 0 &&
+            pooledToken > 0
+          ) {
+            const out = quotePoolSwap({
+              isBuy: tradeMode === "buy",
+              amountIn: Number(amount),
+              pooledWeth,
+              pooledToken,
+            });
+            if (cancelled) return;
+            setQuoteOut(String(out));
+            setQuoteGasUsd(null);
+            setError("");
+            return;
+          }
+
           const q = await getUniswapQuote({
             swapper: activeWallet,
             tokenAddress: token.address as Address,
@@ -224,7 +350,12 @@ export default function TokenPage({
             amount,
           });
           if (cancelled) return;
-          setQuoteOut(q.amountOutFormatted);
+          let out = q.amountOutFormatted;
+          if (hasTransferTax) {
+            const netBps = 10_000 - CHAIN_CONFIG.tradeFeeBps;
+            out = String((Number(out) * netBps) / 10_000);
+          }
+          setQuoteOut(out);
           setQuoteGasUsd(q.gasFeeUSD ?? null);
           setError("");
         } catch (err) {
@@ -239,7 +370,17 @@ export default function TokenPage({
       cancelled = true;
       clearTimeout(handle);
     };
-  }, [token?.graduated, token?.address, activeWallet, amount, tradeMode]);
+  }, [
+    token?.graduated,
+    token?.address,
+    activeWallet,
+    amount,
+    tradeMode,
+    hasTransferTax,
+    token?.bondingCurve,
+    token?.metadata?.pooledWeth,
+    token?.metadata?.pooledToken,
+  ]);
 
   const copyText = async (value: string, field: "ca" | "curve") => {
     try {
@@ -263,6 +404,36 @@ export default function TokenPage({
     setError("");
     try {
       if (token.graduated) {
+        if (hasTransferTax && token.bondingCurve) {
+          const result = await executeGraduatedCurveTrade({
+            config: wagmiConfig,
+            curve: token.bondingCurve as Address,
+            token: token.address as Address,
+            trader,
+            isBuy: tradeMode === "buy",
+            amount,
+          });
+          setAmount("");
+          setQuoteOut(null);
+          void refreshTokens();
+          void fetch("/api/trades/sync", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              tokenAddress: token.address,
+              trader,
+              isBuy: result.isBuy,
+              ethAmount: result.ethAmount,
+              tokenAmount: result.tokenAmount,
+              price: result.price,
+              feeEth: 0,
+              txHash: result.txHash,
+              uniswapPool: result.uniswapPool,
+            }),
+          });
+          return;
+        }
+
         await executeUniswapSwap({
           config: wagmiConfig,
           swapper: trader,
@@ -353,6 +524,9 @@ export default function TokenPage({
   }
 
   const poolFromMeta = token.metadata?.uniswapPool || null;
+  const supply = token.metadata?.supply ?? DEFAULT_SUPPLY;
+  const deadSupply = token.metadata?.deadSupply ?? 0;
+  const mostlyBurned = deadSupply > 0 && deadSupply >= supply * 0.5;
   const dexUrl = `https://dexscreener.com/robinhood/${(
     poolFromMeta || token.address
   ).toLowerCase()}`;
@@ -389,6 +563,9 @@ export default function TokenPage({
             <span className="text-rh-muted">${token.symbol}</span>
             <span className="text-sm tabular-nums text-white/80">
               {formatPriceEth(token.price)}
+              <span className="ml-1.5 text-rh-muted">
+                (~{formatUsd(ethToUsd(token.price, ethUsd))})
+              </span>
             </span>
           </div>
 
@@ -483,6 +660,15 @@ export default function TokenPage({
               >
                 Explorer
               </a>
+              <a
+                href={blockscoutVerifyUrl(token.address)}
+                target="_blank"
+                rel="noopener noreferrer"
+                title="Verified source on Blockscout"
+                className="rounded-md px-2 py-1 text-[11px] font-medium text-rh-muted hover:bg-white/5 hover:text-rh-lime"
+              >
+                Source
+              </a>
               <Link
                 href={`/wallet/${token.creator}`}
                 title="Creator"
@@ -554,27 +740,25 @@ export default function TokenPage({
           <div className="grid grid-cols-2 gap-px bg-rh-raised sm:grid-cols-3 lg:grid-cols-5">
             {[
               {
-                label: "Market cap (FDV)",
+                label: mostlyBurned ? "Market cap" : "Market cap (FDV)",
                 value: `${formatEth(token.marketCap)} ETH`,
-                hint: "Price × total supply",
+                hint: mostlyBurned
+                  ? `Circulating · FDV ${formatEth(token.marketCapFdv)} ETH · ~${formatUsd(ethToUsd(token.marketCap, ethUsd))}`
+                  : `~${formatUsd(ethToUsd(token.marketCap, ethUsd))}`,
               },
               {
                 label: "ATH market cap",
                 value: `${formatEth(token.athMarketCap)} ETH`,
-                hint: "Peak FDV seen",
+                hint: `~${formatUsd(ethToUsd(token.athMarketCap, ethUsd))}`,
               },
               {
                 label: "24h volume",
                 value: `${formatEth(token.volume24h)} ETH`,
+                hint: `~${formatUsd(ethToUsd(token.volume24h, ethUsd))}`,
               },
               {
                 label: "Holders",
-                value: String(
-                  Math.max(
-                    token.holders,
-                    topHolders.filter((h) => !h.isCurve).length
-                  )
-                ),
+                value: String(token.holders),
                 hint: "Wallets with balance",
               },
               token.graduated
@@ -582,13 +766,13 @@ export default function TokenPage({
                     label: "Liquidity",
                     value: `${formatEth(token.ethReserves)} ETH`,
                     hint: token.metadata?.pooledWeth != null
-                      ? `${formatEth(token.metadata.pooledWeth)} WETH in pool`
-                      : "Uniswap V3 pool TVL",
+                      ? `${formatEth(token.metadata.pooledWeth)} WETH · ~${formatUsd(ethToUsd(token.ethReserves, ethUsd))}`
+                      : `~${formatUsd(ethToUsd(token.ethReserves, ethUsd))}`,
                   }
                 : {
                     label: "Raised (curve ETH)",
                     value: `${formatEth(token.ethReserves)} ETH`,
-                    hint: `Of ${CHAIN_CONFIG.graduationThreshold} ETH to graduate`,
+                    hint: `~${formatUsd(ethToUsd(token.ethReserves, ethUsd))} · ${CHAIN_CONFIG.graduationThreshold} ETH to graduate`,
                   },
             ].map((s) => (
               <div key={s.label} className="bg-black p-4 text-center">
@@ -727,6 +911,13 @@ export default function TokenPage({
               ))}
             </div>
 
+            {hasTransferTax && (
+              <p className="mb-3 text-[11px] leading-snug text-rh-dim">
+                Sell here on PumpRobin — MetaMask Swap cannot quote tokens with a
+                transfer tax. This pool is tiny, so large sells return very little ETH.
+              </p>
+            )}
+
             {token.graduated && quoteOut && (
               <div className="mb-3 space-y-1 text-xs text-rh-muted">
                 <p>
@@ -800,11 +991,82 @@ export default function TokenPage({
               }}
             </ConnectButton.Custom>
 
-            <p className="mt-3 text-center text-[11px] text-rh-dim">
+            <p className="mt-3 text-center text-[11px] leading-relaxed text-rh-dim">
               {token.graduated
-                ? "Uniswap V3 · 2.5% slippage · Trading API"
-                : `On-chain curve · ${CHAIN_CONFIG.creatorFeeBps / 100}% creator + ${CHAIN_CONFIG.platformFeeBps / 100}% platform · DEX after ~${CHAIN_CONFIG.graduationThreshold} ETH`}
+                ? hasTransferTax
+                  ? `${CHAIN_CONFIG.creatorFeeBps / 100}% creator + ${CHAIN_CONFIG.platformFeeBps / 100}% platform on every DEX trade (GMGN, Uniswap, etc.) · 1% pool fee · LP locked`
+                  : "Uniswap V3 · 1% pool fee · LP locked (legacy token)"
+                : `On-chain curve · ${CHAIN_CONFIG.creatorFeeBps / 100}% creator + ${CHAIN_CONFIG.platformFeeBps / 100}% platform · fees accumulate until ~$${CHAIN_CONFIG.feeClaimThresholdUsdHint}`}
             </p>
+
+            {usesFeeRouter &&
+              pendingFees &&
+              activeWallet?.toLowerCase() === token.creator.toLowerCase() && (
+                <div className="mt-4 border border-rh-raised bg-black/60 p-3 text-center">
+                  <p className="text-[11px] text-rh-muted">Your accumulated fees</p>
+                  <p className="mt-1 text-sm font-medium tabular-nums">
+                    {formatEth(
+                      pendingFees.creatorEth +
+                        pendingFees.creatorTokens * token.price
+                    )}{" "}
+                    ETH
+                    {ethUsd != null && (
+                      <span className="ml-1 text-xs text-rh-dim">
+                        (~
+                        {formatUsd(
+                          ethToUsd(
+                            pendingFees.creatorEth +
+                              pendingFees.creatorTokens * token.price,
+                            ethUsd
+                          )
+                        )}
+                        )
+                      </span>
+                    )}
+                  </p>
+                  {pendingFees.creatorTokens > 0 && (
+                    <p className="mt-1 text-[10px] text-rh-dim">
+                      incl. {formatTokenAmount(pendingFees.creatorTokens)} tokens
+                      (swapped to ETH on claim)
+                    </p>
+                  )}
+                  <p className="mt-1 text-[10px] text-rh-dim">
+                    Auto-sent at {CHAIN_CONFIG.feeClaimThresholdEth} ETH (~$
+                    {CHAIN_CONFIG.feeClaimThresholdUsdHint}) · claimable above threshold
+                  </p>
+                  <RhButton
+                    className="mt-3 w-full"
+                    variant="ghost"
+                    disabled={claimBusy || !pendingFees.creatorClaimable}
+                    onClick={() => {
+                      if (!token.bondingCurve) return;
+                      setClaimBusy(true);
+                      setError("");
+                      void claimCreatorFees({
+                        config: wagmiConfig,
+                        curve: token.bondingCurve as Address,
+                      })
+                        .then(() => {
+                          void readPendingFees(
+                            wagmiConfig,
+                            token.bondingCurve as Address,
+                            token.price
+                          ).then(setPendingFees);
+                        })
+                        .catch((err) =>
+                          setError(friendlyWalletError(err, "Claim failed"))
+                        )
+                        .finally(() => setClaimBusy(false));
+                    }}
+                  >
+                    {claimBusy
+                      ? "Claiming…"
+                      : pendingFees.creatorClaimable
+                        ? "Claim creator fees"
+                        : "Below claim threshold"}
+                  </RhButton>
+                </div>
+              )}
           </div>
 
           <TopHoldersPanel holders={topHolders} />

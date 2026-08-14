@@ -13,6 +13,8 @@ import {
   X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useEthUsd } from "@/lib/use-eth-usd";
+import { EthWithUsd } from "@/components/eth-with-usd";
 
 function formatEthBalance(displayBalance?: string): { amount: string; unit: string } | null {
   if (!displayBalance) return null;
@@ -85,6 +87,7 @@ export function WalletButton({
   const { address, connector } = useAccount();
   const { disconnect } = useDisconnect();
   const { connectAsync } = useConnect();
+  const ethUsd = useEthUsd();
   const [menuOpen, setMenuOpen] = useState(false);
   const [panel, setPanel] = useState<"menu" | "switch">("menu");
   const [copied, setCopied] = useState(false);
@@ -189,6 +192,9 @@ export function WalletButton({
         const ready = mounted;
         const connected = ready && account && chain;
         const balance = formatEthBalance(account?.displayBalance);
+        const balanceEth = balance
+          ? Number(balance.amount.replace(/,/g, ""))
+          : null;
 
         return (
           <div
@@ -281,6 +287,16 @@ export function WalletButton({
                               {balance.unit}
                             </span>
                           ) : null}
+                          {balanceEth != null && Number.isFinite(balanceEth) ? (
+                            <span
+                              className={cn(
+                                "text-[10px] tabular-nums",
+                                isLight ? "text-rh-on-lime/55" : "text-rh-dim"
+                              )}
+                            >
+                              ~${(balanceEth * ethUsd).toFixed(0)}
+                            </span>
+                          ) : null}
                         </>
                       ) : (
                         <span className="max-w-[4.25rem] truncate">
@@ -319,6 +335,16 @@ export function WalletButton({
                             )}
                           >
                             {balance.unit}
+                          </span>
+                        ) : null}
+                        {balanceEth != null && Number.isFinite(balanceEth) ? (
+                          <span
+                            className={cn(
+                              "text-[11px] tabular-nums",
+                              isLight ? "text-rh-on-lime/55" : "text-rh-dim"
+                            )}
+                          >
+                            ~${(balanceEth * ethUsd).toFixed(0)}
                           </span>
                         ) : null}
                       </button>
@@ -395,6 +421,9 @@ export function WalletButton({
                               {balance && (
                                 <p className="mt-0.5 text-xs tabular-nums text-rh-muted">
                                   {balance.amount} {balance.unit}
+                                  {balanceEth != null && Number.isFinite(balanceEth)
+                                    ? ` · ~$${(balanceEth * ethUsd).toFixed(2)}`
+                                    : ""}
                                 </p>
                               )}
                             </div>

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { Users } from "lucide-react";
 import { cn, formatEth, shortenAddress } from "@/lib/utils";
 import { explorerAddressUrl } from "@/lib/chain";
-import type { TradeData } from "@/lib/data";
+import type { TradeData } from "@/lib/data-types";
 import { DEFAULT_SUPPLY } from "@/lib/curve";
 
 export type HolderRow = {
@@ -13,6 +13,8 @@ export type HolderRow = {
   pct: number;
   label?: string;
   isCurve?: boolean;
+  isLp?: boolean;
+  isBurned?: boolean;
   isDev?: boolean;
 };
 
@@ -88,7 +90,11 @@ export function TopHoldersPanel({
   holders: HolderRow[];
   className?: string;
 }) {
-  const top10Pct = holders.reduce((s, h) => s + h.pct, 0);
+  const top10Pct = holders.reduce(
+    (s, h) => s + (h.isLp || h.isCurve || h.isBurned ? 0 : h.pct),
+    0
+  );
+  const usesOnChain = holders.some((h) => h.isLp);
 
   return (
     <div
@@ -108,7 +114,8 @@ export function TopHoldersPanel({
             top10Pct > 50 ? "text-amber-300" : "text-rh-dim"
           )}
         >
-          Top {holders.length}: {top10Pct.toFixed(1)}%
+          Wallets top {holders.filter((h) => !h.isLp && !h.isCurve && !h.isBurned).length}:{" "}
+          {top10Pct.toFixed(1)}%
         </span>
       </div>
 
@@ -125,7 +132,7 @@ export function TopHoldersPanel({
               </span>
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-1.5">
-                  {h.isCurve ? (
+                  {h.isCurve || h.isLp ? (
                     <span className="font-mono text-[12px] text-white/80">
                       {shortenAddress(h.address, 4)}
                     </span>
@@ -150,7 +157,7 @@ export function TopHoldersPanel({
                     <span
                       className={cn(
                         "rounded px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide",
-                        h.isCurve
+                        h.isCurve || h.isLp
                           ? "bg-white/10 text-rh-muted"
                           : "bg-rh-lime/15 text-rh-lime"
                       )}
@@ -163,7 +170,7 @@ export function TopHoldersPanel({
                   <div
                     className={cn(
                       "h-full rounded-full",
-                      h.isCurve ? "bg-white/30" : "bg-rh-lime"
+                      h.isCurve || h.isLp ? "bg-white/30" : "bg-rh-lime"
                     )}
                     style={{ width: `${Math.min(100, Math.max(1, h.pct))}%` }}
                   />
@@ -182,8 +189,9 @@ export function TopHoldersPanel({
         </ul>
       )}
       <p className="mt-3 text-[10px] leading-relaxed text-rh-dim">
-        Holders = wallets with a balance. Bonding curve inventory is shown
-        separately and does not count toward the holder total.
+        {usesOnChain
+          ? "On-chain balances from Blockscout. LP pool and burned supply are labeled and excluded from the wallet concentration total."
+          : "Holders = wallets with a balance. Bonding curve inventory is shown separately and does not count toward the holder total."}
       </p>
     </div>
   );

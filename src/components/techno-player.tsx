@@ -24,11 +24,36 @@ import {
 
 const STORAGE_KEY = "pumprobin.techno";
 
+/** Survives React remounts so autoplay isn't killed by Strict Mode / layout refresh. */
+let sharedAudio: HTMLAudioElement | null = null;
+
+function getSharedAudio(): HTMLAudioElement {
+  if (sharedAudio) return sharedAudio;
+  const boot = document.getElementById(
+    "pumprobin-boot-audio"
+  ) as HTMLAudioElement | null;
+  if (boot) {
+    boot.preload = "auto";
+    boot.autoplay = true;
+    boot.setAttribute("playsinline", "");
+    boot.setAttribute("webkit-playsinline", "true");
+    sharedAudio = boot;
+    return boot;
+  }
+  const audio = new Audio();
+  audio.preload = "auto";
+  audio.autoplay = true;
+  audio.loop = false;
+  audio.setAttribute("playsinline", "");
+  audio.setAttribute("webkit-playsinline", "true");
+  sharedAudio = audio;
+  return audio;
+}
+
 type Persisted = {
   muted?: boolean;
   volume?: number;
   collapsed?: boolean;
-  disabled?: boolean;
   x?: number;
   y?: number;
 };
@@ -50,8 +75,9 @@ function readPersisted(): Persisted {
 function writePersisted(patch: Persisted) {
   try {
     const next = { ...readPersisted(), ...patch };
-    // Drop legacy trackIndex so old Perception (etc.) never restores
-    delete (next as Persisted & { trackIndex?: number }).trackIndex;
+    delete (next as Persisted & { trackIndex?: number; disabled?: boolean }).trackIndex;
+    delete (next as Persisted & { disabled?: boolean }).disabled;
+    delete (next as { muted?: boolean }).muted;
     localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
   } catch {
     /* ignore */
@@ -92,18 +118,15 @@ export function TechnoPlayer() {
   const [pos, setPos] = useState({ x: 20, y: 0 });
   const [dragging, setDragging] = useState(false);
   const startedRef = useRef(false);
+  const autoplayMutedRef = useRef(true);
   const trackIndexRef = useRef(defaultTrackIndex());
 
   const track: MusicTrack = MUSIC_PLAYLIST[trackIndex] ?? MUSIC_PLAYLIST[0]!;
 
   const ensureAudio = useCallback(() => {
-    if (!audioRef.current) {
-      const audio = new Audio();
-      audio.preload = "auto";
-      audio.loop = false;
-      audioRef.current = audio;
-    }
-    return audioRef.current;
+    const audio = getSharedAudio();
+    audioRef.current = audio;
+    return audio;
   }, []);
 
   const loadTrack = useCallback(
@@ -132,53 +155,85 @@ export function TechnoPlayer() {
     setPlaying(false);
     setDisabled(true);
     setNeedsGesture(false);
-    writePersisted({ disabled: true });
+  }, []);
+
+  const unmuteAndPlay = useCallback((vol: number) => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    audio.muted = false;
+    audio.volume = vol;
+    void audio.play().then(
+      () => {
+        autoplayMutedRef.current = false;
+        startedRef.current = true;
+        setMuted(false);
+        setNeedsGesture(false);
+        setPlaying(true);
+      },
+      () => {
+        // Keep muted playback going if unmute is blocked
+        audio.muted = true;
+        void audio.play().then(
+          () => {
+            startedRef.current = true;
+            autoplayMutedRef.current = true;
+            setPlaying(true);
+            setNeedsGesture(true);
+          },
+          () => setNeedsGesture(true)
+        );
+      }
+    );
   }, []);
 
   const startPlayback = useCallback(
-    async (opts?: { force?: boolean }) => {
-      if (!opts?.force && readPersisted().disabled) return;
+    async (opts?: { force?: boolean; unmute?: boolean }) => {
       const audio = ensureAudio();
       try {
         if (!audio.src) {
           loadTrack(trackIndexRef.current);
         }
-        audio.muted = muted;
-        audio.volume = muted ? 0 : volume;
+        const vol = volume;
+        const wantSound = opts?.unmute || !autoplayMutedRef.current;
+        audio.muted = !wantSound;
+        audio.volume = vol;
         await audio.play();
         startedRef.current = true;
         setNeedsGesture(false);
         setPlaying(true);
         setDisabled(false);
-        writePersisted({ disabled: false });
+        if (wantSound) {
+          autoplayMutedRef.current = false;
+          setMuted(false);
+        }
       } catch {
         setNeedsGesture(true);
         setPlaying(false);
       }
     },
-    [ensureAudio, loadTrack, muted, volume]
+    [ensureAudio, loadTrack, volume]
   );
 
   useEffect(() => {
     setMounted(true);
     const audio = ensureAudio();
     const saved = readPersisted();
+    writePersisted({ muted: false });
 
     const vol = typeof saved.volume === "number" ? saved.volume : 0.55;
     setVolume(vol);
-    audio.volume = saved.muted ? 0 : vol;
-
-    if (saved.muted) {
-      setMuted(true);
-      audio.muted = true;
-    }
+    audio.volume = vol;
+    audio.muted = false;
+    setMuted(false);
     if (saved.collapsed) setCollapsed(true);
 
-    // Always start on the default track (ignore any legacy saved index)
     const idx = defaultTrackIndex();
     trackIndexRef.current = idx;
     setTrackIndex(idx);
-    audio.src = MUSIC_PLAYLIST[idx]!.src;
+    const desiredSrc = MUSIC_PLAYLIST[idx]!.src;
+    if (!audio.src.includes(desiredSrc) && !audio.src.endsWith(desiredSrc)) {
+      audio.src = desiredSrc;
+    }
 
     const defaultY = Math.max(8, window.innerHeight - 180);
     const nextPos = clampPos(
@@ -199,6 +254,7 @@ export function TechnoPlayer() {
     const onEnded = () => {
       const next = (trackIndexRef.current + 1) % MUSIC_PLAYLIST.length;
       loadTrack(next);
+      audio.muted = autoplayMutedRef.current;
       void audio.play().then(
         () => setPlaying(true),
         () => setPlaying(false)
@@ -212,40 +268,82 @@ export function TechnoPlayer() {
     audio.addEventListener("play", onPlay);
     audio.addEventListener("pause", onPause);
 
-    if (saved.disabled) {
-      setDisabled(true);
-      return () => {
-        audio.removeEventListener("timeupdate", onTime);
-        audio.removeEventListener("ended", onEnded);
-        audio.removeEventListener("play", onPlay);
-        audio.removeEventListener("pause", onPause);
-      };
-    }
-
-    void audio.play().then(
-      () => {
+    const startAutoplay = async () => {
+      audio.volume = vol;
+      audio.muted = false;
+      try {
+        await audio.play();
         startedRef.current = true;
+        autoplayMutedRef.current = false;
         setPlaying(true);
+        setMuted(false);
         setNeedsGesture(false);
-      },
-      () => setNeedsGesture(true)
-    );
+        return;
+      } catch {
+        /* browser blocked sound — fall through to muted */
+      }
+
+      audio.muted = true;
+      try {
+        await audio.play();
+        startedRef.current = true;
+        autoplayMutedRef.current = true;
+        setPlaying(true);
+        setNeedsGesture(true);
+        window.setTimeout(() => unmuteAndPlay(vol), 50);
+        window.setTimeout(() => unmuteAndPlay(vol), 400);
+        window.setTimeout(() => unmuteAndPlay(vol), 1200);
+      } catch {
+        setNeedsGesture(true);
+      }
+    };
+
+    void startAutoplay();
+    const canplay = () => {
+      if (!startedRef.current) void startAutoplay();
+    };
+    audio.addEventListener("canplay", canplay);
 
     const unlock = () => {
-      if (startedRef.current || readPersisted().disabled) return;
-      void startPlayback({ force: true });
+      if (autoplayMutedRef.current) {
+        unmuteAndPlay(vol);
+        return;
+      }
+      if (!startedRef.current) {
+        void startPlayback({ force: true, unmute: true });
+      }
     };
-    window.addEventListener("pointerdown", unlock, { once: true });
-    window.addEventListener("keydown", unlock, { once: true });
+
+    const opts = { capture: true, passive: true } as const;
+    const events = [
+      "pointerdown",
+      "pointermove",
+      "mousemove",
+      "click",
+      "keydown",
+      "touchstart",
+      "touchmove",
+      "wheel",
+      "scroll",
+      "focus",
+    ] as const;
+    for (const ev of events) window.addEventListener(ev, unlock, opts);
+
+    const onVisible = () => {
+      if (document.visibilityState !== "visible") return;
+      if (!startedRef.current) void startAutoplay();
+      else if (autoplayMutedRef.current) unmuteAndPlay(vol);
+    };
+    document.addEventListener("visibilitychange", onVisible);
 
     return () => {
-      audio.pause();
       audio.removeEventListener("timeupdate", onTime);
       audio.removeEventListener("ended", onEnded);
       audio.removeEventListener("play", onPlay);
       audio.removeEventListener("pause", onPause);
-      window.removeEventListener("pointerdown", unlock);
-      window.removeEventListener("keydown", unlock);
+      audio.removeEventListener("canplay", canplay);
+      for (const ev of events) window.removeEventListener(ev, unlock, opts);
+      document.removeEventListener("visibilitychange", onVisible);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -291,8 +389,7 @@ export function TechnoPlayer() {
           type="button"
           onClick={() => {
             setDisabled(false);
-            writePersisted({ disabled: false });
-            void startPlayback({ force: true });
+            void startPlayback({ force: true, unmute: true });
           }}
           className="fixed bottom-4 left-4 z-[60] rounded-full border border-white/15 bg-black/80 px-3 py-1.5 text-[11px] text-rh-muted backdrop-blur hover:border-rh-lime/40 hover:text-rh-lime"
         >
@@ -312,6 +409,19 @@ export function TechnoPlayer() {
       className="fixed z-[60] flex max-w-[calc(100vw-1rem)] flex-col items-start gap-2"
       style={{ left: pos.x, top: pos.y, touchAction: "none" }}
     >
+      {needsGesture && playing && (
+        <button
+          type="button"
+          onClick={() => {
+            autoplayMutedRef.current = false;
+            void startPlayback({ force: true, unmute: true });
+          }}
+          className="rounded-full border border-rh-lime/40 bg-rh-lime/90 px-3 py-1.5 text-[11px] font-semibold text-rh-on-lime shadow-[0_0_20px_-6px_rgba(204,255,0,0.6)]"
+        >
+          Tap for sound
+        </button>
+      )}
+
       {needsGesture && !playing && (
         <button
           type="button"
@@ -461,6 +571,10 @@ export function TechnoPlayer() {
                   const audio = ensureAudio();
                   const next = !muted;
                   audio.muted = next;
+                  if (!next) {
+                    autoplayMutedRef.current = false;
+                    audio.volume = volume;
+                  }
                   setMuted(next);
                   writePersisted({ muted: next });
                 }}

@@ -256,11 +256,12 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* Stats strip — honest zeros */}
+      {/* Stats strip */}
       <section className="py-16">
-        <div className="rh-container grid grid-cols-2 md:grid-cols-4 gap-8 text-center">
+        <div className="rh-container grid grid-cols-2 md:grid-cols-5 gap-8 text-center">
           {[
             { label: "Tokens launched", value: String(stats.totalTokens) },
+            { label: "Total transactions", value: String(stats.totalTrades) },
             { label: "24h volume", value: `${formatEth(stats.volume24h)} ETH` },
             { label: "Traders (24h)", value: String(stats.activeTraders) },
             { label: "Graduated", value: String(stats.graduatedTokens) },

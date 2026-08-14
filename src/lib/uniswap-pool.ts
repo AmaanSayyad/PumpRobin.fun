@@ -2,7 +2,7 @@ import { formatEther, type Address, type Hash } from "viem";
 import { ERC20_ABI, UNISWAP_V3_POOL_ABI } from "@/lib/contracts";
 import { WETH_ADDRESS } from "@/lib/chain";
 import { getRobinhoodPublicClient } from "@/lib/onchain-curve";
-import type { TradeRecord } from "@/lib/data";
+import type { TradeRecord } from "@/lib/data-types";
 
 export interface UniswapPoolSpot {
   pool: string;
@@ -105,7 +105,17 @@ export async function readUniswapPoolSpot(
       : 0;
 
   const priceEth =
-    fromSlot > 0 && Number.isFinite(fromSlot) ? fromSlot : fromReserves;
+    fromSlot > 0 && fromReserves > 0
+      ? (() => {
+          const liq = pooledWeth * 2;
+          const ratio = fromSlot / fromReserves;
+          // Micro-pools: slot0 tick is easy to spike — trust reserve ratio
+          if (liq < 0.05 || ratio > 3 || ratio < 1 / 3) return fromReserves;
+          return fromSlot;
+        })()
+      : fromSlot > 0 && Number.isFinite(fromSlot)
+        ? fromSlot
+        : fromReserves;
 
   return {
     pool: pool.toLowerCase(),
@@ -266,20 +276,104 @@ export function swapsToTradeRecords(
   }));
 }
 
+const BLOCKSCOUT = "https://robinhoodchain.blockscout.com/api/v2";
+const DEAD_ADDRESS = "0x000000000000000000000000000000000000dead";
+
+export type OnChainHolderRow = {
+  address: string;
+  balance: number;
+  pct: number;
+  label?: string;
+  isCurve?: boolean;
+  isLp?: boolean;
+  isDev?: boolean;
+  isBurned?: boolean;
+};
+
 /** Best-effort holder count from Blockscout (graduated tokens). */
 export async function fetchTokenHoldersCount(
   token: string
 ): Promise<number | null> {
   try {
-    const res = await fetch(
-      `https://robinhoodchain.blockscout.com/api/v2/tokens/${token}`,
-      { cache: "no-store" }
-    );
+    const res = await fetch(`${BLOCKSCOUT}/tokens/${token}`, {
+      cache: "no-store",
+    });
     if (!res.ok) return null;
     const data = (await res.json()) as { holders_count?: string | number };
     const n = Number(data.holders_count);
     return Number.isFinite(n) && n >= 0 ? n : null;
   } catch {
     return null;
+  }
+}
+
+/** Top holders from Blockscout — accurate for graduated (Uniswap) tokens. */
+export async function fetchTokenTopHolders(
+  token: string,
+  limit: number,
+  ctx: {
+    supply: number;
+    creator?: string;
+    bondingCurve?: string | null;
+    uniswapPool?: string | null;
+  }
+): Promise<OnChainHolderRow[]> {
+  const supply = ctx.supply > 0 ? ctx.supply : 1_000_000_000;
+  const creator = ctx.creator?.toLowerCase();
+  const curve = ctx.bondingCurve?.toLowerCase();
+  const pool = ctx.uniswapPool?.toLowerCase();
+  const dead = DEAD_ADDRESS;
+
+  try {
+    const res = await fetch(
+      `${BLOCKSCOUT}/tokens/${token}/holders?items_count=${Math.min(limit + 5, 50)}`,
+      { cache: "no-store" }
+    );
+    if (!res.ok) return [];
+
+    const data = (await res.json()) as {
+      items?: Array<{
+        address?: { hash?: string; is_contract?: boolean };
+        value?: string;
+      }>;
+    };
+
+    const rows: OnChainHolderRow[] = [];
+    for (const item of data.items ?? []) {
+      const address = item.address?.hash?.toLowerCase();
+      const raw = item.value;
+      if (!address || !raw) continue;
+
+      const balance = Number(raw) / 1e18;
+      if (!Number.isFinite(balance) || balance <= 1e-6) continue;
+
+      const addr = address;
+      const isBurned = addr === dead;
+      const isLp = Boolean(pool && addr === pool);
+      const isCurve = Boolean(curve && addr === curve);
+      const isDev = Boolean(creator && addr === creator);
+
+      let label: string | undefined;
+      if (isBurned) label = "Burned";
+      else if (isLp) label = "LP pool";
+      else if (isCurve) label = "Bonding curve";
+      else if (isDev) label = "Dev";
+
+      rows.push({
+        address: addr,
+        balance,
+        pct: (balance / supply) * 100,
+        label,
+        isBurned,
+        isLp,
+        isCurve,
+        isDev,
+      });
+    }
+
+    rows.sort((a, b) => b.balance - a.balance);
+    return rows.slice(0, limit);
+  } catch {
+    return [];
   }
 }

@@ -6,6 +6,10 @@ import { Footer } from "@/components/layout/footer";
 import { SmoothScroll } from "@/components/smooth-scroll";
 import { DataHydrator } from "@/components/data-hydrator";
 import { TechnoPlayer } from "@/components/techno-player";
+import { DEFAULT_TRACK_ID, MUSIC_PLAYLIST } from "@/lib/music-playlist";
+
+const bootTrack =
+  MUSIC_PLAYLIST.find((t) => t.id === DEFAULT_TRACK_ID) ?? MUSIC_PLAYLIST[0]!;
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://pumprobin.fun"),
@@ -39,6 +43,13 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className="min-h-screen bg-black text-white">
+        <audio
+          id="pumprobin-boot-audio"
+          autoPlay
+          playsInline
+          preload="auto"
+          src={bootTrack.src}
+        />
         <Providers>
           <DataHydrator>
             <SmoothScroll>

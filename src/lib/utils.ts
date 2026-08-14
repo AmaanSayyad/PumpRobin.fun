@@ -13,6 +13,45 @@ export function formatNumber(n: number, decimals = 2): string {
   return n.toFixed(decimals);
 }
 
+/** Compact USD for UI labels */
+export function formatUsd(amount: number): string {
+  if (!Number.isFinite(amount) || amount === 0) return "$0";
+  const abs = Math.abs(amount);
+  if (abs >= 1_000_000) return `$${(amount / 1_000_000).toFixed(2)}M`;
+  if (abs >= 10_000) return `$${(amount / 1000).toFixed(1)}K`;
+  if (abs >= 1000) return `$${amount.toFixed(0)}`;
+  if (abs >= 1) return `$${amount.toFixed(2)}`;
+  if (abs >= 0.01) return `$${amount.toFixed(2)}`;
+  return `$${amount.toFixed(3)}`;
+}
+
+export function ethToUsd(eth: number, ethUsd: number): number {
+  if (!Number.isFinite(eth) || !Number.isFinite(ethUsd)) return 0;
+  return eth * ethUsd;
+}
+
+/** Human ETH amount string (no unit). */
+export function formatEthAmount(amount: number, decimals = 4): string {
+  if (!Number.isFinite(amount) || amount === 0) return "0";
+  if (Math.abs(amount) < 1e-6) return amount.toExponential(2);
+  if (Math.abs(amount) < 0.0001) return amount.toFixed(8);
+  if (Math.abs(amount) < 1) return amount.toFixed(decimals).replace(/\.?0+$/, "");
+  return amount.toFixed(Math.min(decimals, 2));
+}
+
+/** "0.0124 ETH (~$31.02)" */
+export function formatEthWithUsd(
+  eth: number | string,
+  ethUsd: number | null | undefined,
+  decimals = 4
+): string {
+  const n = typeof eth === "string" ? Number(eth) : eth;
+  if (!Number.isFinite(n)) return "—";
+  const ethPart = `${formatEthAmount(n, decimals)} ETH`;
+  if (ethUsd == null || !Number.isFinite(ethUsd)) return ethPart;
+  return `${ethPart} (~${formatUsd(ethToUsd(n, ethUsd))})`;
+}
+
 /** Format ETH amounts for UI (already in ETH units, not wei). */
 export function formatEth(amount: number, decimals = 4): string {
   if (!Number.isFinite(amount) || amount === 0) return "0";
@@ -41,11 +80,30 @@ export function formatGasUsd(usd: string | number): string {
   return `$${n.toFixed(2)}`;
 }
 
+const SUBSCRIPT_DIGITS = "₀₁₂₃₄₅₆₇₈₉";
+
+function toSubscript(n: number): string {
+  return String(n)
+    .split("")
+    .map((d) => SUBSCRIPT_DIGITS[Number(d)] ?? d)
+    .join("");
+}
+
+/** Memecoin-style tiny prices: 0.0₁₀1946 ETH instead of 1.946e-11 ETH */
 export function formatPriceEth(price: number): string {
   if (!Number.isFinite(price) || price === 0) return "0 ETH";
-  if (price < 1e-9) return `${price.toExponential(3)} ETH`;
-  if (price < 1e-6) return `${price.toFixed(12)} ETH`;
-  return `${price.toFixed(8)} ETH`;
+  if (price >= 0.0001) {
+    return `${price.toFixed(8).replace(/\.?0+$/, "")} ETH`;
+  }
+  const str = price.toFixed(24);
+  const match = str.match(/^0\.(0+)([1-9]\d*)/);
+  if (match) {
+    const zeroCount = match[1].length;
+    const sig = match[2].slice(0, 4);
+    return `0.0${toSubscript(zeroCount)}${sig} ETH`;
+  }
+  if (price >= 1e-6) return `${price.toFixed(12).replace(/\.?0+$/, "")} ETH`;
+  return `${price.toPrecision(4)} ETH`;
 }
 
 export function shortenAddress(addr: string, chars = 4): string {

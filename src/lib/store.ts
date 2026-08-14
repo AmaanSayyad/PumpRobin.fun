@@ -1,8 +1,8 @@
 "use client";
 
 import { create } from "zustand";
-import type { TokenData, PlatformStats, TradeData } from "./data";
-import { EMPTY_STATS, deserializeTrade } from "./data";
+import type { TokenData, PlatformStats, TradeData } from "./data-types";
+import { EMPTY_STATS, deserializeTrade } from "./data-client";
 
 interface AppStore {
   tokens: TokenData[];

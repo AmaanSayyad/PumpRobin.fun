@@ -35,11 +35,11 @@ export const robinhoodTestnet = defineChain({
 
 export const WETH_ADDRESS = "0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73" as const;
 
-/** Receives creation fees + platform trade-fee share (0.3%) */
+/** Receives creation fees + platform trade-fee share (1%) */
 export const FEE_COLLECTOR =
   "0x61F928CBbc9b65C404C3DB42BDe403D78954aDD9" as const;
 
-/** Receives the 1% creator-fee share of every bonding-curve trade */
+/** @deprecated Legacy address — v2 factory pays creator fees to the token creator wallet */
 export const CREATOR_FEE_COLLECTOR =
   "0x4654FE1e59547372Db57e9F6865aa7aC3A0C77a3" as const;
 
@@ -55,7 +55,11 @@ export const UNISWAP_V3 = {
 } as const;
 
 export const CHAIN_CONFIG = {
-  creationFee: "0.0005",
+  /** ~$10 platform fee at ~$2.5k ETH */
+  creationFee: "0.004",
+  creationFeeUsdHint: 10,
+  /** Fallback ETH/USD when price feed is unavailable */
+  ethUsdFallback: 2500,
   /**
    * Network gas headroom for createToken on Robinhood (~2M gas ≈ 0.00024 ETH today).
    * Kept slightly above live estimateGas so the launch banner isn't scary vs bags.fm.
@@ -75,20 +79,26 @@ export const CHAIN_CONFIG = {
   alertsSubEth: "0.028",
   alertsSubUsdHint: 50,
   alertsSubDays: 30,
-  /** Min ETH that seeds the Uniswap V3 pool at launch (shown on GMGN) */
-  minSeedLiquidityEth: "0.01",
-  /** Anti-snipe fee decay (when enabled at launch) */
-  antiSnipeStartBps: 8_000, // 80%
-  antiSnipeEndBps: 0,
-  antiSnipeDurationSec: 10,
-  /**
-   * @deprecated Launches now seed Uniswap immediately; kept for copy fallbacks.
-   */
-  graduationThreshold: 8, // ETH (legacy)
-  /** Bonding-curve trade fees (legacy pre-grad curves only) */
+  /** ETH raised on the bonding curve before auto-graduation to Uniswap V3 */
+  graduationThreshold: 8,
+  /** Min ETH seed for instant Uniswap launch (~$5 at $2.5k ETH) */
+  minInstantSeedEth: "0.002",
+  minInstantSeedUsdHint: 5,
+  /** Target starting FDV — contract puts fewer tokens in LP when seed is small */
+  instantTargetFdvEth: 2,
+  instantMinLpSupplyBps: 5,
+  instantMaxLpSupplyBps: 10_000,
+  /** @deprecated Use dynamic lpSupplyBps — max cap only */
+  instantLpSupplyPct: 100,
+  /** % of seed ETH that locks as LP (rest = creator buy on Uniswap) */
+  instantLpEthPct: 70,
+  /** Bonding-curve + DEX trade fees (1% creator + 1% platform, accumulated) */
   creatorFeeBps: 100,
-  platformFeeBps: 30,
-  tradeFeeBps: 130, // 1.3%
+  platformFeeBps: 100,
+  tradeFeeBps: 200, // 2%
+  /** ~$10 at $2.5k ETH — auto-payout / claim threshold per fee bucket */
+  feeClaimThresholdEth: "0.004",
+  feeClaimThresholdUsdHint: 10,
   totalSupply: 1_000_000_000,
   decimals: 18,
   feeCollector: FEE_COLLECTOR,
@@ -111,5 +121,5 @@ export function explorerTxUrl(txHash: string): string {
   return `${EXPLORER}/tx/${txHash}`;
 }
 
-/** Ownership quick-select — max ~50% (half of seed buys on Uniswap, half LP). */
-export const OWNERSHIP_PRESETS = [1, 10, 25, 50] as const;
+/** Ownership quick-select at launch (ETH cost scales with %). */
+export const OWNERSHIP_PRESETS = [1, 10, 20, 30] as const;

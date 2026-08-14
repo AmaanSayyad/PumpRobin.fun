@@ -1,232 +1,45 @@
 import { CHAIN_CONFIG } from "@/lib/chain";
+import type {
+  LaunchMetadata,
+  LeaderboardEntry,
+  PlatformState,
+  PlatformStats,
+  TokenData,
+  TokenRecord,
+  TradeData,
+  TradeRecord,
+} from "@/lib/data-types";
+import {
+  EMPTY_STATS,
+  deserializeTrade,
+  isTokenFeatured,
+  LAUNCH_EXTRA_SOCIAL_FIELDS,
+  LAUNCH_PRIMARY_SOCIAL_FIELDS,
+  LAUNCH_SOCIAL_FIELDS,
+  pickSocialMetadata,
+} from "@/lib/data-client";
 
-export interface LaunchMetadata {
-  website?: string;
-  twitter?: string;
-  telegram?: string;
-  discord?: string;
-  linkedin?: string;
-  github?: string;
-  litepaper?: string;
-  teaserVideo?: string;
-  pitchDeck?: string;
-  docs?: string;
-  instagram?: string;
-  reddit?: string;
-  tiktok?: string;
-  farcaster?: string;
-  bannerUri?: string;
-  communityCoin?: boolean;
-  communityBoard?: boolean;
-  antiSnipe?: boolean;
-  maxWallet2pct?: boolean;
-  customSupply?: boolean;
-  supply?: number;
-  decimals?: number;
-  initialBuyEth?: number;
-  /** Buy this % of supply at launch (sets initialBuyEth) */
-  ownershipPct?: number;
-  /** Share creator fee stream with other wallets (metadata until on-chain split ships) */
-  feeSharing?: boolean;
-  feeShares?: Array<{ address: string; pct: number }>;
-  /** Set after bonding-curve graduation */
-  uniswapPool?: string;
-  /** Live Uniswap V3 spot (ETH per whole token) — preferred over curve virtuals when graduated */
-  spotPriceEth?: number;
-  /** Approx pool TVL in ETH (≈ 2 × pooled WETH) */
-  liquidityEth?: number;
-  pooledWeth?: number;
-  pooledToken?: number;
-  /** ISO timestamp when spot was last refreshed from chain */
-  spotAt?: string;
-  /** Holder count from explorer (graduated); overrides trade-derived when higher */
-  holdersCount?: number;
-  /** All-time high fully diluted market cap in ETH */
-  athMarketCapEth?: number;
-  /** ISO timestamp when ATH was last updated */
-  athAt?: string;
-  /** Paid Explore feature boost */
-  featured?: boolean;
-  /** ISO expiry for featured placement */
-  featuredUntil?: string;
-  /** ETH paid for the boost */
-  featuredPaidEth?: number;
-  /** Tx hash of the boost payment to fee collector */
-  featuredTxHash?: string;
-}
+export type {
+  LaunchMetadata,
+  LeaderboardEntry,
+  PlatformState,
+  PlatformStats,
+  TokenData,
+  TokenRecord,
+  TradeData,
+  TradeRecord,
+} from "@/lib/data-types";
 
-/** Whether a token's paid Explore feature is still active. */
-export function isTokenFeatured(meta?: LaunchMetadata | null): boolean {
-  if (!meta?.featured || !meta.featuredUntil) return false;
-  const until = new Date(meta.featuredUntil).getTime();
-  return Number.isFinite(until) && until > Date.now();
-}
+export type { LaunchSocialKey } from "@/lib/data-client";
 
-/** Always-visible socials on the launch form */
-export const LAUNCH_PRIMARY_SOCIAL_FIELDS = [
-  { key: "website", label: "Website link", placeholder: "https://" },
-  { key: "twitter", label: "X / Twitter link", placeholder: "https://x.com/…" },
-  { key: "telegram", label: "Telegram link", placeholder: "https://t.me/…" },
-] as const satisfies ReadonlyArray<{
-  key: keyof LaunchMetadata;
-  label: string;
-  placeholder: string;
-}>;
-
-/** Extra optional links (collapsed under “Add social links”) */
-export const LAUNCH_EXTRA_SOCIAL_FIELDS = [
-  { key: "discord", label: "Discord link", placeholder: "https://discord.gg/…" },
-  { key: "linkedin", label: "LinkedIn link", placeholder: "https://linkedin.com/…" },
-  { key: "github", label: "GitHub link", placeholder: "https://github.com/…" },
-  { key: "litepaper", label: "Litepaper link", placeholder: "https://…" },
-  { key: "teaserVideo", label: "Teaser video link", placeholder: "https://…" },
-  { key: "pitchDeck", label: "Pitch deck link", placeholder: "https://…" },
-  { key: "docs", label: "Docs link", placeholder: "https://…" },
-  { key: "instagram", label: "Instagram link", placeholder: "https://instagram.com/…" },
-  { key: "reddit", label: "Reddit link", placeholder: "https://reddit.com/…" },
-  { key: "tiktok", label: "TikTok link", placeholder: "https://tiktok.com/…" },
-  { key: "farcaster", label: "Farcaster link", placeholder: "https://warpcast.com/…" },
-] as const satisfies ReadonlyArray<{
-  key: keyof LaunchMetadata;
-  label: string;
-  placeholder: string;
-}>;
-
-/** Optional link keys shown on the launch form / token page */
-export const LAUNCH_SOCIAL_FIELDS = [
-  ...LAUNCH_PRIMARY_SOCIAL_FIELDS,
-  ...LAUNCH_EXTRA_SOCIAL_FIELDS,
-] as const;
-
-export type LaunchSocialKey =
-  | (typeof LAUNCH_PRIMARY_SOCIAL_FIELDS)[number]["key"]
-  | (typeof LAUNCH_EXTRA_SOCIAL_FIELDS)[number]["key"];
-
-export function pickSocialMetadata(
-  meta: Partial<LaunchMetadata> | null | undefined
-): Partial<LaunchMetadata> {
-  if (!meta) return {};
-  const out: Partial<LaunchMetadata> = {};
-  for (const { key } of LAUNCH_SOCIAL_FIELDS) {
-    const v = meta[key];
-    if (typeof v === "string" && v.trim()) out[key] = v.trim();
-  }
-  return out;
-}
-
-export interface TokenRecord {
-  address: string;
-  bondingCurve: string;
-  name: string;
-  symbol: string;
-  imageUri: string;
-  description: string;
-  creator: string;
-  createdAt: string; // ISO
-  /** Curve state — all ETH amounts in ETH units, tokens in whole tokens */
-  virtualEthReserves: number;
-  virtualTokenReserves: number;
-  realEthReserves: number;
-  realTokenReserves: number;
-  graduated: boolean;
-  source: "registry" | "onchain";
-  txHash?: string;
-  metadata?: LaunchMetadata;
-}
-
-export interface TradeRecord {
-  id: string;
-  tokenAddress: string;
-  trader: string;
-  isBuy: boolean;
-  ethAmount: number;
-  tokenAmount: number;
-  price: number;
-  feeEth: number;
-  timestamp: string; // ISO
-}
-
-export interface PlatformState {
-  tokens: TokenRecord[];
-  trades: TradeRecord[];
-  autoLaunchEnabled: boolean;
-  lastAutoLaunch: string | null;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface TokenData {
-  address: string;
-  bondingCurve: string;
-  name: string;
-  symbol: string;
-  imageUri: string;
-  description: string;
-  creator: string;
-  createdAt: Date;
-  price: number; // ETH per token
-  marketCap: number; // ETH FDV (price × total supply)
-  /** Peak FDV seen (ETH) */
-  athMarketCap: number;
-  volume24h: number; // ETH
-  holders: number;
-  progress: number;
-  graduated: boolean;
-  priceChange24h: number; // percent
-  /** Real ETH sitting in the bonding curve (raised toward graduation) */
-  ethReserves: number;
-  virtualEthReserves: number;
-  virtualTokenReserves: number;
-  realTokenReserves: number;
-  source: "registry" | "onchain";
-  txHash?: string;
-  metadata?: LaunchMetadata;
-}
-
-export interface TradeData {
-  id: string;
-  tokenAddress: string;
-  trader: string;
-  isBuy: boolean;
-  ethAmount: number;
-  tokenAmount: number;
-  price: number;
-  feeEth: number;
-  timestamp: Date;
-}
-
-export interface PlatformStats {
-  totalTokens: number;
-  totalVolume: number; // ETH all-time
-  totalTrades: number;
-  activeTraders: number;
-  graduatedTokens: number;
-  volume24h: number; // ETH
-  feesCollected: number; // ETH
-  avgGraduationTime: number | null; // hours, null if none
-}
-
-export interface LeaderboardEntry {
-  rank: number;
-  address: string;
-  name: string;
-  symbol: string;
-  imageUri: string;
-  marketCap: number;
-  volume24h: number;
-  holders: number;
-  progress: number;
-}
-
-export const EMPTY_STATS: PlatformStats = {
-  totalTokens: 0,
-  totalVolume: 0,
-  totalTrades: 0,
-  activeTraders: 0,
-  graduatedTokens: 0,
-  volume24h: 0,
-  feesCollected: 0,
-  avgGraduationTime: null,
+export {
+  EMPTY_STATS,
+  deserializeTrade,
+  isTokenFeatured,
+  LAUNCH_EXTRA_SOCIAL_FIELDS,
+  LAUNCH_PRIMARY_SOCIAL_FIELDS,
+  LAUNCH_SOCIAL_FIELDS,
+  pickSocialMetadata,
 };
 
 /** Prefer execution price (eth/token) — curve `getPrice()` is wrong after instant Uniswap seed. */
@@ -331,7 +144,13 @@ export function enrichToken(
   const price = priceOf(token);
   const since24h = Date.now() - 24 * 60 * 60 * 1000;
   const supply = token.metadata?.supply ?? 1_000_000_000;
-  const marketCap = price * supply;
+  const deadSupply = token.metadata?.deadSupply ?? 0;
+  const circulatingSupply = Math.max(0, supply - deadSupply);
+  const marketCapFdv = price * supply;
+  const marketCapCirculating = price * circulatingSupply;
+  const mostlyBurned =
+    deadSupply > 0 && deadSupply >= supply * 0.5;
+  const marketCap = mostlyBurned ? marketCapCirculating : marketCapFdv;
   /** Classic bonding-curve open FDV — NOT the Uniswap seed price */
   const launchFdv = (1.3 / 1_073_000_000) * supply;
 
@@ -339,7 +158,10 @@ export function enrichToken(
   for (const t of trades) {
     if (t.tokenAddress.toLowerCase() !== token.address.toLowerCase()) continue;
     const px = tradeExecutionPrice(t);
-    if (px > 0) athFromTrades = Math.max(athFromTrades, px * supply);
+    if (px > 0) {
+      const athSupply = mostlyBurned ? circulatingSupply : supply;
+      athFromTrades = Math.max(athFromTrades, px * athSupply);
+    }
   }
 
   const prevAth = token.metadata?.athMarketCapEth ?? 0;
@@ -348,12 +170,19 @@ export function enrichToken(
     token.graduated &&
     prevAth > 0 &&
     Math.abs(prevAth - launchFdv) / launchFdv < 0.05;
+  // Drop FDV-based ATH when most supply is burned (circulating mcap is primary)
+  const prevAthIsFdvBased =
+    mostlyBurned &&
+    marketCapFdv > 0 &&
+    prevAth > 0 &&
+    Math.abs(prevAth - marketCapFdv) / marketCapFdv < 0.15;
 
   const athMarketCap = token.graduated
     ? Math.max(
         marketCap,
+        mostlyBurned ? price * circulatingSupply : marketCapFdv,
         athFromTrades,
-        prevAthIsVirtualFloor ? 0 : prevAth
+        prevAthIsVirtualFloor || prevAthIsFdvBased ? 0 : prevAth
       )
     : Math.max(marketCap, launchFdv, athFromTrades, prevAth);
 
@@ -385,6 +214,8 @@ export function enrichToken(
     createdAt: new Date(token.createdAt),
     price,
     marketCap,
+    marketCapFdv,
+    circulatingSupply,
     athMarketCap,
     volume24h: volumeInWindow(trades, token.address, since24h),
     holders: holdersFinal,
@@ -467,14 +298,6 @@ export function serializeTrade(t: TradeData): TradeRecord {
     price: t.price,
     feeEth: t.feeEth,
     timestamp: t.timestamp.toISOString(),
-  };
-}
-
-export function deserializeTrade(t: TradeRecord): TradeData {
-  return {
-    ...t,
-    feeEth: t.feeEth ?? 0,
-    timestamp: new Date(t.timestamp),
   };
 }
 

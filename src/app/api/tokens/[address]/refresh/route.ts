@@ -8,6 +8,7 @@ import {
   readUniswapPoolSpot,
   swapsToTradeRecords,
 } from "@/lib/uniswap-pool";
+import { readDeadTokenBalance } from "@/lib/onchain-token";
 import {
   addTradesIfNew,
   readPlatformState,
@@ -87,7 +88,6 @@ export async function POST(
       (t) => t.tokenAddress.toLowerCase() === token.address.toLowerCase()
     );
 
-    const mcap = spotPrice * supply;
     const launchFdv = (1.3 / 1_073_000_000) * supply;
     const prevAth = token.metadata?.athMarketCapEth ?? 0;
     const prevAthIsVirtualFloor =
@@ -95,14 +95,38 @@ export async function POST(
       prevAth > 0 &&
       Math.abs(prevAth - launchFdv) / launchFdv < 0.05;
 
+    let deadSupply: number | undefined;
+    if (live.graduated) {
+      try {
+        deadSupply = await readDeadTokenBalance(token.address as Address);
+      } catch {
+        /* best-effort */
+      }
+    }
+
+    const circulating =
+      deadSupply != null ? Math.max(0, supply - deadSupply) : supply;
+    const mostlyBurned = deadSupply != null && deadSupply >= supply * 0.5;
+    const mcapFdv = spotPrice * supply;
+    const mcapCirculating = spotPrice * circulating;
+    const mcap = mostlyBurned ? mcapCirculating : mcapFdv;
+    const athSupply = mostlyBurned ? circulating : supply;
+    const prevAthIsFdvBased =
+      mostlyBurned &&
+      mcapFdv > 0 &&
+      prevAth > 0 &&
+      Math.abs(prevAth - mcapFdv) / mcapFdv < 0.15;
+
     let athFromTrades = 0;
     for (const t of tokenTrades) {
       const px = tradeExecutionPrice(t);
-      if (px > 0) athFromTrades = Math.max(athFromTrades, px * supply);
+      if (px > 0) athFromTrades = Math.max(athFromTrades, px * athSupply);
     }
 
+    const ignorePrevAth =
+      prevAthIsVirtualFloor || prevAthIsFdvBased;
     const athMarketCapEth = live.graduated
-      ? Math.max(mcap, athFromTrades, prevAthIsVirtualFloor ? 0 : prevAth)
+      ? Math.max(mcap, athFromTrades, ignorePrevAth ? 0 : prevAth)
       : Math.max(prevAth, mcap, launchFdv, athFromTrades);
 
     const holdersCount = live.graduated
@@ -128,9 +152,10 @@ export async function POST(
             }
           : {}),
         ...(holdersCount != null ? { holdersCount } : {}),
+        ...(deadSupply != null ? { deadSupply } : {}),
         athMarketCapEth,
         athAt:
-          athMarketCapEth > (prevAthIsVirtualFloor ? 0 : prevAth)
+          athMarketCapEth > (ignorePrevAth ? 0 : prevAth)
             ? new Date().toISOString()
             : token.metadata?.athAt,
       },

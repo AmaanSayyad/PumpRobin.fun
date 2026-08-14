@@ -9,6 +9,7 @@ const PRODUCT = [
   { href: "/launch", label: "Launch" },
   { href: "/alerts", label: "Alerts" },
   { href: "/earn", label: "Earn" },
+  { href: "/ambassador", label: "Ambassador" },
   { href: "/early", label: "Early" },
   { href: "/onramp", label: "On-ramp" },
 ];

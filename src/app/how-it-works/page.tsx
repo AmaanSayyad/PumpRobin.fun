@@ -13,61 +13,50 @@ import {
 
 const LIFECYCLE = [
   "Create",
-  "Bonding curve",
-  "Creator fees",
-  "Graduate",
-  "DEX liquidity",
+  "Seed LP",
+  "Trade on DEX",
+  "Locked liquidity",
 ] as const;
 
 const STEPS = [
   {
     n: "01",
     title: "Create your token",
-    body: `Connect your wallet and set name, ticker, image, description, and optional socials. Default supply is ${DEFAULT_SUPPLY.toLocaleString()} tokens. Optional first buy can run with the launch. Creation fee: ${CHAIN_CONFIG.creationFee} ETH.`,
+    body: `Connect your wallet and set name, ticker, image, description, and optional socials. Default supply is ${DEFAULT_SUPPLY.toLocaleString()} tokens. Min LP seed: ${CHAIN_CONFIG.minInstantSeedEth} ETH. Creation fee: ${CHAIN_CONFIG.creationFee} ETH.`,
   },
   {
     n: "02",
-    title: "Trade on the bonding curve",
-    body: `Anyone can buy or sell while the curve is active. Price follows a constant-product virtual AMM (x·y = k) — same family as bags.fm / pump.fun. Virtual reserves start at ~${INITIAL_VIRTUAL_ETH} ETH. Fees: ${CHAIN_CONFIG.creatorFeeBps / 100}% creator + ${CHAIN_CONFIG.platformFeeBps / 100}% platform (${CHAIN_CONFIG.tradeFeeBps / 100}% total).`,
+    title: "Instant Uniswap V3 LP",
+    body: `Every launch seeds a Uniswap V3 TOKEN/WETH pool immediately. ~${CHAIN_CONFIG.instantLpEthPct}% of your seed locks as LP; the rest buys tokens for you. LP supply scales with seed size so small launches stay expensive. Excess supply is burned.`,
   },
   {
     n: "03",
-    title: "Creator rewards",
-    body: `The ${CHAIN_CONFIG.creatorFeeBps / 100}% creator-fee share of every bonding-curve trade is paid instantly to the creator fee collector; PumpRobin takes ${CHAIN_CONFIG.platformFeeBps / 100}% to the platform collector. Post-graduation LP fees are on the roadmap.`,
+    title: "Trade on DEX",
+    body: "Trading happens on Uniswap V3 from block one — GMGN, DEX Screener, and PumpRobin all route through the locked pool. Uniswap pool fee is 1% (TOKEN/WETH tier used on Robinhood memecoins).",
   },
   {
     n: "04",
-    title: "Automatic graduation",
-    body: `When ~${CHAIN_CONFIG.graduationThreshold} ETH net is collected on the curve, the token graduates automatically: remaining tokens + ETH seed a Uniswap V3 TOKEN/WETH pool (1% fee, full-range) and the LP NFT is permanently locked at the dead address.`,
-  },
-  {
-    n: "05",
-    title: "Liquidity locked — trading continues",
-    body: "After graduation, trading moves off the bonding curve onto Uniswap V3 (same venue as VLAD / CASHCAT-style Robinhood pairs on DEX Screener). Principal LP cannot be withdrawn; post-graduation fee collection for creators is on the roadmap.",
+    title: "Liquidity locked",
+    body: "The LP NFT is sent to the dead address so principal cannot be withdrawn. Verify pool + lock on Blockscout and DEX Screener.",
   },
 ];
 
 const TOKENOMICS = [
   { label: "Default supply", value: "1B" },
-  { label: "Virtual ETH", value: `${INITIAL_VIRTUAL_ETH}` },
-  { label: "Trade fee", value: `${CHAIN_CONFIG.tradeFeeBps / 100}%` },
-  { label: "Graduation", value: `${CHAIN_CONFIG.graduationThreshold} ETH` },
+  { label: "Min LP seed", value: `${CHAIN_CONFIG.minInstantSeedEth} ETH` },
+  { label: "Target start FDV", value: `${CHAIN_CONFIG.instantTargetFdvEth} ETH` },
+  { label: "Pool fee", value: "1% Uniswap" },
 ];
 
 const FEES = [
   {
-    title: "Bonding curve buy / sell",
-    detail: `${CHAIN_CONFIG.creatorFeeBps / 100}% creator + ${CHAIN_CONFIG.platformFeeBps / 100}% platform`,
-    value: `${CHAIN_CONFIG.tradeFeeBps / 100}% total`,
-  },
-  {
     title: "Token creation",
-    detail: "Paid once at launch (+ gas)",
+    detail: "Paid once at launch (+ min LP seed + gas)",
     value: `${CHAIN_CONFIG.creationFee} ETH`,
   },
   {
-    title: "Post-graduation pool",
-    detail: "Uniswap V3 · TOKEN/WETH · LP NFT locked",
+    title: "Uniswap pool",
+    detail: "1% TOKEN/WETH · LP NFT locked at dead address",
     value: "1% tier",
   },
 ];
@@ -75,19 +64,15 @@ const FEES = [
 const FAQ = [
   {
     q: "What is PumpRobin.fun?",
-    a: "A fair-launch memecoin launchpad on Robinhood Chain. Launch an ERC-20, trade on a bonding curve, and graduate toward DEX liquidity — similar in spirit to pump.fun, built for an EVM L2.",
+    a: "A fair-launch memecoin launchpad on Robinhood Chain. Launch an ERC-20 with instant Uniswap V3 locked LP — live on DEX Screener and GMGN from block one.",
   },
   {
-    q: "How does the bonding curve work?",
-    a: "Constant-product virtual reserves (x·y = k). Price rises as buyers enter and falls when sellers exit. Anyone can trade before graduation.",
-  },
-  {
-    q: "What is the graduation threshold?",
-    a: `Graduation targets ~${CHAIN_CONFIG.graduationThreshold} ETH net collected on the curve. Progress is shown on each token card and detail page.`,
+    q: "How does launch work?",
+    a: `Pay ${CHAIN_CONFIG.creationFee} ETH creation fee plus at least ${CHAIN_CONFIG.minInstantSeedEth} ETH LP seed. ~${CHAIN_CONFIG.instantLpEthPct}% seeds locked Uniswap liquidity; the rest buys tokens for you. Excess supply is burned.`,
   },
   {
     q: "What fees does PumpRobin charge?",
-    a: `${CHAIN_CONFIG.creationFee} ETH creation fee plus ${CHAIN_CONFIG.tradeFeeBps / 100}% on bonding-curve trades (${CHAIN_CONFIG.creatorFeeBps / 100}% creator + ${CHAIN_CONFIG.platformFeeBps / 100}% platform). Network gas is separate.`,
+    a: `${CHAIN_CONFIG.creationFee} ETH creation fee at launch. Trades happen on Uniswap (1% pool fee). Network gas is separate.`,
   },
   {
     q: "Is liquidity rug-pullable?",
@@ -99,11 +84,15 @@ const FAQ = [
   },
   {
     q: "How do I earn as a creator?",
-    a: `The ${CREATOR_FEE_PCT}% creator-fee share of every bonding-curve trade goes to the creator fee collector instantly (${CHAIN_CONFIG.platformFeeBps / 100}% goes to the platform collector).`,
+    a: `${CREATOR_FEE_PCT}% creator + ${CHAIN_CONFIG.platformFeeBps / 100}% platform on taxed transfers. Fees go straight to the creator wallet and platform wallet as tokens — no pause, no blacklist, no admin.`,
   },
   {
-    q: "What do anti-snipe and max wallet do?",
-    a: "Anti-snipe marks a short bot-protection window at launch. Max wallet aims to cap any wallet at ~2% of supply early. Both are launch options today; full on-chain enforcement follows factory hardening.",
+    q: "Why doesn't my logo show on GMGN / DEX Screener?",
+    a: "Indexers don't read on-chain imageUri automatically. After graduation, submit your logo via DEX Screener's Update Token Info on your token page (manual review, usually 24–72h). PumpRobin stores the IPFS URL on-chain and in our registry.",
+  },
+  {
+    q: "What do max wallet and community options do?",
+    a: "Max wallet aims to cap any wallet at ~2% of supply early (metadata today; on-chain enforcement follows). Community coin / board are optional social features on the token page.",
   },
 ];
 

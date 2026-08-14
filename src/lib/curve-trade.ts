@@ -12,7 +12,7 @@ import {
   type Address,
   type Hash,
 } from "viem";
-import { BONDING_CURVE_ABI, ERC20_ABI } from "@/lib/contracts";
+import { BONDING_CURVE_ABI, ERC20_ABI, PUMP_ROBIN_TOKEN_ABI } from "@/lib/contracts";
 import { CHAIN_CONFIG } from "@/lib/chain";
 
 const DECIMALS = 18;
@@ -109,7 +109,7 @@ function parseTradeFromReceipt(
         topics: log.topics,
       });
       if (decoded.eventName !== "Trade") continue;
-      const args = decoded.args as {
+      const args = decoded.args as unknown as {
         trader: Address;
         isBuy: boolean;
         ethAmount: bigint;
@@ -257,6 +257,191 @@ export async function executeCurveTrade(input: {
     txHash,
     isBuy,
     ethAmount: decoded?.ethAmount ?? (isBuy ? amt : state.price * amt),
+    tokenAmount: decoded?.tokenAmount ?? (isBuy ? 0 : amt),
+    graduated: state.graduated,
+    uniswapPool: state.uniswapPool,
+    realEthReserves: state.realEthReserves,
+    realTokenReserves: state.realTokenReserves,
+    virtualEthReserves: state.virtualEthReserves,
+    virtualTokenReserves: state.virtualTokenReserves,
+    price: decoded?.price ?? state.price,
+  };
+}
+
+/** Whether this curve supports accumulated fees (v5+) */
+export async function curveSupportsFeeRouter(
+  config: Config,
+  curve: Address
+): Promise<boolean> {
+  try {
+    await readContract(config, {
+      address: curve,
+      abi: BONDING_CURVE_ABI,
+      functionName: "pendingCreatorTokenFees",
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export type PendingFees = {
+  creatorEth: number;
+  platformEth: number;
+  creatorTokens: number;
+  platformTokens: number;
+  claimThresholdEth: number;
+  creatorClaimable: boolean;
+};
+
+export async function tokenHasTransferTax(
+  config: Config,
+  token: Address
+): Promise<boolean> {
+  try {
+    const bps = await readContract(config, {
+      address: token,
+      abi: PUMP_ROBIN_TOKEN_ABI,
+      functionName: "FEE_BPS",
+    });
+    return Number(bps) > 0;
+  } catch {
+    return false;
+  }
+}
+
+export async function readPendingFees(
+  config: Config,
+  curve: Address,
+  tokenPriceEth = 0
+): Promise<PendingFees> {
+  const [creatorEth, platformEth, creatorTokens, platformTokens, threshold] =
+    (await readContract(config, {
+      address: curve,
+      abi: BONDING_CURVE_ABI,
+      functionName: "getPendingFees",
+    })) as [bigint, bigint, bigint, bigint, bigint];
+
+  const creatorEthNum = Number(formatEther(creatorEth));
+  const platformEthNum = Number(formatEther(platformEth));
+  const creatorTokensNum = Number(formatEther(creatorTokens));
+  const platformTokensNum = Number(formatEther(platformTokens));
+  const claimThresholdEth = Number(formatEther(threshold));
+  const creatorTokenEth = creatorTokensNum * tokenPriceEth;
+  const platformTokenEth = platformTokensNum * tokenPriceEth;
+
+  return {
+    creatorEth: creatorEthNum,
+    platformEth: platformEthNum,
+    creatorTokens: creatorTokensNum,
+    platformTokens: platformTokensNum,
+    claimThresholdEth,
+    creatorClaimable:
+      creatorEthNum + creatorTokenEth >= claimThresholdEth,
+  };
+}
+
+export async function claimCreatorFees(input: {
+  config: Config;
+  curve: Address;
+}): Promise<Hash> {
+  const hash = await writeContract(input.config, {
+    address: input.curve,
+    abi: BONDING_CURVE_ABI,
+    functionName: "claimCreatorFees",
+  });
+  const receipt = await waitForTransactionReceipt(input.config, { hash });
+  if (receipt.status !== "success") {
+    throw new Error("Claim transaction reverted");
+  }
+  return hash;
+}
+
+/**
+ * Graduated-token trades via bonding curve (Uniswap under the hood + 2% fee).
+ */
+export async function executeGraduatedCurveTrade(input: {
+  config: Config;
+  curve: Address;
+  token: Address;
+  trader: Address;
+  isBuy: boolean;
+  amount: string;
+}): Promise<CurveTradeResult> {
+  const { config, curve, token, trader, isBuy, amount } = input;
+  const amt = Number(amount);
+  if (!Number.isFinite(amt) || amt <= 0) {
+    throw new Error("Enter a valid amount");
+  }
+
+  let txHash: Hash;
+
+  if (isBuy) {
+    const value = parseEther(amount);
+    txHash = await writeContract(config, {
+      address: curve,
+      abi: BONDING_CURVE_ABI,
+      functionName: "buyOnUniswap",
+      args: [ZERO],
+      value,
+    });
+  } else {
+    const tokenAmount = parseUnits(amount, DECIMALS);
+    const balance = (await readContract(config, {
+      address: token,
+      abi: ERC20_ABI,
+      functionName: "balanceOf",
+      args: [trader],
+    })) as bigint;
+
+    if (balance === ZERO) {
+      throw new Error(
+        "You have 0 tokens in this wallet — switch to Buy and purchase first."
+      );
+    }
+    if (balance < tokenAmount) {
+      throw new Error(
+        `Insufficient tokens — wallet has ${formatEther(balance)}, you tried to sell ${amount}`
+      );
+    }
+
+    const allowance = (await readContract(config, {
+      address: token,
+      abi: ERC20_ABI,
+      functionName: "allowance",
+      args: [trader, curve],
+    })) as bigint;
+
+    if (allowance < tokenAmount) {
+      const approveHash = await writeContract(config, {
+        address: token,
+        abi: ERC20_ABI,
+        functionName: "approve",
+        args: [curve, tokenAmount],
+      });
+      await waitForTransactionReceipt(config, { hash: approveHash });
+    }
+
+    txHash = await writeContract(config, {
+      address: curve,
+      abi: BONDING_CURVE_ABI,
+      functionName: "sellOnUniswap",
+      args: [tokenAmount, ZERO],
+    });
+  }
+
+  const receipt = await waitForTransactionReceipt(config, { hash: txHash });
+  if (receipt.status !== "success") {
+    throw new Error("Trade transaction reverted");
+  }
+
+  const decoded = parseTradeFromReceipt(receipt.logs, trader);
+  const state = await readCurveState(config, curve);
+
+  return {
+    txHash,
+    isBuy,
+    ethAmount: decoded?.ethAmount ?? amt,
     tokenAmount: decoded?.tokenAmount ?? (isBuy ? 0 : amt),
     graduated: state.graduated,
     uniswapPool: state.uniswapPool,

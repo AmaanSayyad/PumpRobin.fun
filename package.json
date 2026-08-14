@@ -8,8 +8,9 @@
     "start": "next start",
     "lint": "next lint",
     "compile": "forge build",
-    "deploy:mainnet": "forge create contracts/PumpRobinFactory.sol:PumpRobinFactory --rpc-url $RH_RPC_URL --private-key $PRIVATE_KEY --broadcast --legacy",
-    "deploy:testnet": "forge create contracts/PumpRobinFactory.sol:PumpRobinFactory --rpc-url $RH_TESTNET_RPC_URL --private-key $PRIVATE_KEY --broadcast --legacy"
+    "deploy:mainnet": "forge create contracts/PumpRobinFactory.sol:PumpRobinFactory --constructor-args 0x61F928CBbc9b65C404C3DB42BDe403D78954aDD9 --rpc-url https://rpc.mainnet.chain.robinhood.com --private-key $PRIVATE_KEY --broadcast --legacy",
+    "deploy:testnet": "forge create contracts/PumpRobinFactory.sol:PumpRobinFactory --rpc-url $RH_TESTNET_RPC_URL --private-key $PRIVATE_KEY --broadcast --legacy",
+    "verify:mainnet": "bash scripts/verify-blockscout.sh"
   },
   "dependencies": {
     "@gsap/react": "^2.1.2",

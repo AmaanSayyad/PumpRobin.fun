@@ -82,7 +82,8 @@ export function TokenChart({
             />
             {!graduated && (
               <p className="pointer-events-none absolute bottom-3 left-3 right-3 rounded-lg bg-black/80 px-3 py-2 text-center text-[11px] text-rh-muted">
-                Pre-grad charts may be empty until the Uniswap pool is live.
+                Bonding-curve phase — GMGN/DEX charts appear after graduation to
+                Uniswap (~8 ETH raised). Trade on PumpRobin until then.
               </p>
             )}
           </>
@@ -99,7 +100,7 @@ export function TokenChart({
             />
             {!graduated && (
               <p className="pointer-events-none absolute bottom-3 left-3 right-3 rounded-lg bg-black/75 px-3 py-2 text-center text-[11px] text-rh-muted">
-                DEX chart after Uniswap pool is seeded at launch.
+                DEX chart unlocks when the curve graduates to Uniswap V3.
               </p>
             )}
           </>

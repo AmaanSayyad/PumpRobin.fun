@@ -9,7 +9,6 @@ export const PUMP_ROBIN_FACTORY_ABI = [
       { name: "name", type: "string", indexed: false },
       { name: "symbol", type: "string", indexed: false },
       { name: "imageUri", type: "string", indexed: false },
-      { name: "antiSnipe", type: "bool", indexed: false },
     ],
   },
   {
@@ -20,7 +19,6 @@ export const PUMP_ROBIN_FACTORY_ABI = [
       { name: "symbol", type: "string" },
       { name: "imageUri", type: "string" },
       { name: "description", type: "string" },
-      { name: "antiSnipe", type: "bool" },
     ],
     outputs: [
       { name: "token", type: "address" },
@@ -31,13 +29,6 @@ export const PUMP_ROBIN_FACTORY_ABI = [
   {
     type: "function",
     name: "creationFee",
-    inputs: [],
-    outputs: [{ name: "", type: "uint256" }],
-    stateMutability: "view",
-  },
-  {
-    type: "function",
-    name: "minSeedLiquidity",
     inputs: [],
     outputs: [{ name: "", type: "uint256" }],
     stateMutability: "view",
@@ -78,6 +69,17 @@ export const BONDING_CURVE_ABI = [
       { name: "ethLiquidity", type: "uint256", indexed: false },
       { name: "tokenLiquidity", type: "uint256", indexed: false },
       { name: "lpTokenId", type: "uint256", indexed: false },
+      { name: "lpLockedTo", type: "address", indexed: false },
+    ],
+  },
+  {
+    type: "event",
+    name: "FeesDistributed",
+    inputs: [
+      { name: "creator", type: "address", indexed: true },
+      { name: "creatorFee", type: "uint256", indexed: false },
+      { name: "platform", type: "address", indexed: true },
+      { name: "platformFee", type: "uint256", indexed: false },
     ],
   },
   {
@@ -90,7 +92,7 @@ export const BONDING_CURVE_ABI = [
   },
   {
     type: "function",
-    name: "seedAndGraduate",
+    name: "seedInstantUniswap",
     inputs: [
       { name: "recipient", type: "address" },
       { name: "minTokensOut", type: "uint256" },
@@ -99,8 +101,37 @@ export const BONDING_CURVE_ABI = [
     stateMutability: "payable",
   },
   {
+    type: "event",
+    name: "InstantSeeded",
+    inputs: [
+      { name: "pool", type: "address", indexed: true },
+      { name: "lpEth", type: "uint256", indexed: false },
+      { name: "buyEth", type: "uint256", indexed: false },
+      { name: "lpSupplyBps", type: "uint256", indexed: false },
+      { name: "tokensInLp", type: "uint256", indexed: false },
+      { name: "estimatedFdvEth", type: "uint256", indexed: false },
+    ],
+  },
+  {
     type: "function",
-    name: "buy",
+    name: "previewInstantLaunch",
+    inputs: [{ name: "seedEth", type: "uint256" }],
+    outputs: [
+      { name: "lpEth", type: "uint256" },
+      { name: "buyEth", type: "uint256" },
+      { name: "lpSupplyBps", type: "uint256" },
+      { name: "estimatedFdvEth", type: "uint256" },
+    ],
+    stateMutability: "pure",
+  },
+  {
+    type: "function",
+    name: "TARGET_START_FDV_ETH",
+    inputs: [],
+    outputs: [{ name: "", type: "uint256" }],
+    stateMutability: "view",
+  },
+  {
     inputs: [{ name: "minTokens", type: "uint256" }],
     outputs: [],
     stateMutability: "payable",
@@ -204,7 +235,85 @@ export const BONDING_CURVE_ABI = [
   },
   {
     type: "function",
-    name: "CREATOR_FEE_RECIPIENT",
+    name: "buyOnUniswap",
+    inputs: [{ name: "minTokensOut", type: "uint256" }],
+    outputs: [],
+    stateMutability: "payable",
+  },
+  {
+    type: "function",
+    name: "sellOnUniswap",
+    inputs: [
+      { name: "tokenAmount", type: "uint256" },
+      { name: "minEthOut", type: "uint256" },
+    ],
+    outputs: [],
+    stateMutability: "nonpayable",
+  },
+  {
+    type: "function",
+    name: "getPendingFees",
+    inputs: [],
+    outputs: [
+      { name: "creatorEth", type: "uint256" },
+      { name: "platformEth", type: "uint256" },
+      { name: "creatorTokens", type: "uint256" },
+      { name: "platformTokens", type: "uint256" },
+      { name: "claimThreshold", type: "uint256" },
+    ],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "claimCreatorFees",
+    inputs: [],
+    outputs: [],
+    stateMutability: "nonpayable",
+  },
+    {
+      type: "function",
+      name: "claimPlatformFees",
+      inputs: [],
+      outputs: [],
+      stateMutability: "nonpayable",
+    },
+  {
+    type: "function",
+    name: "FEE_CLAIM_THRESHOLD",
+    inputs: [],
+    outputs: [{ name: "", type: "uint256" }],
+    stateMutability: "view",
+  },
+  {
+    type: "event",
+    name: "FeesAccumulated",
+    inputs: [
+      { name: "creator", type: "address", indexed: true },
+      { name: "creatorFee", type: "uint256", indexed: false },
+      { name: "platform", type: "address", indexed: true },
+      { name: "platformFee", type: "uint256", indexed: false },
+    ],
+  },
+  {
+    type: "function",
+    name: "LP_LOCK_RECIPIENT",
+    inputs: [],
+    outputs: [{ name: "", type: "address" }],
+    stateMutability: "view",
+  },
+] as const;
+
+export const PUMP_ROBIN_TOKEN_ABI = [
+  {
+    type: "function",
+    name: "FEE_BPS",
+    inputs: [],
+    outputs: [{ name: "", type: "uint256" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "owner",
     inputs: [],
     outputs: [{ name: "", type: "address" }],
     stateMutability: "view",

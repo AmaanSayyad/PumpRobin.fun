@@ -26,13 +26,13 @@ import {
   MessageCircle,
   Percent,
   Plus,
-  Shield,
   Sparkles,
   Trash2,
   Users,
   Wallet,
 } from "lucide-react";
 import { RhButton } from "@/components/ui/rh-button";
+import { EthWithUsd } from "@/components/eth-with-usd";
 import {
   CHAIN_CONFIG,
   FEE_COLLECTOR,
@@ -42,26 +42,27 @@ import {
 } from "@/lib/chain";
 import { BONDING_CURVE_ABI, CONTRACTS, PUMP_ROBIN_FACTORY_ABI } from "@/lib/contracts";
 import { useAppStore } from "@/lib/store";
-import { cn, friendlyWalletError, shortenAddress } from "@/lib/utils";
+import { cn, formatEthWithUsd, formatUsd, friendlyWalletError, shortenAddress } from "@/lib/utils";
+import { useEthUsd } from "@/lib/use-eth-usd";
 import {
   LAUNCH_EXTRA_SOCIAL_FIELDS,
   LAUNCH_PRIMARY_SOCIAL_FIELDS,
   LAUNCH_SOCIAL_FIELDS,
   pickSocialMetadata,
-  type LaunchMetadata,
   type LaunchSocialKey,
-} from "@/lib/data";
+} from "@/lib/data-client";
+import type { LaunchMetadata } from "@/lib/data-types";
 import {
   DEFAULT_SUPPLY,
-  ethInForSupplyPercent,
+  estimatedInstantFdvEth,
+  ethInForInstantSupplyPercent,
   formatSupplyShort,
-  graduationMarketCapEth,
-  initialTokenPriceEth,
-  launchSeedEth,
-  marketCapEth,
+  instantLpSupplyPct,
+  launchInstantSeedEth,
   minEthToLaunch,
-  splitLaunchSeed,
-  supplyPercentForEthIn,
+  minInstantSeedEth,
+  splitInstantSeed,
+  supplyPercentForInstantSeed,
 } from "@/lib/curve";
 
 const EMPTY_SOCIALS = Object.fromEntries(
@@ -83,7 +84,6 @@ type LaunchDraft = {
   showBanner: boolean;
   communityCoin: boolean;
   communityBoard: boolean;
-  antiSnipe: boolean;
   maxWallet2pct: boolean;
   customSupply: boolean;
   supply: number;
@@ -153,24 +153,6 @@ function defaultDecimalsForSupply(supply: number): number {
   if (supply >= 1e12) return 9;
   if (supply >= 1e10) return 12;
   return 18;
-}
-
-function formatTinyEth(n: number): string {
-  if (!Number.isFinite(n) || n <= 0) return "—";
-  if (n < 1e-12) return `${n.toExponential(2)} ETH`;
-  if (n < 1) {
-    const fixed = n.toFixed(12).replace(/\.?0+$/, "");
-    return `${fixed} ETH`;
-  }
-  return `${n.toFixed(4)} ETH`;
-}
-
-function formatMcap(n: number): string {
-  if (!Number.isFinite(n) || n <= 0) return "—";
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(2)}M ETH`;
-  if (n >= 1000) return `${(n / 1000).toFixed(2)}K ETH`;
-  if (n >= 1) return `${n.toFixed(2)} ETH`;
-  return `${n.toFixed(4)} ETH`;
 }
 
 function SectionLabel({ children }: { children: ReactNode }) {
@@ -315,6 +297,7 @@ export default function LaunchPage() {
   const { data: ethBalance } = useBalance({ address });
   const { addToken, addTradeLocal, refreshTokens, upsertToken } = useAppStore();
   const walletReady = Boolean(address) || isConnected || accountStatus === "reconnecting";
+  const ethUsd = useEthUsd();
 
   const [name, setName] = useState("");
   const [symbol, setSymbol] = useState("");
@@ -327,13 +310,14 @@ export default function LaunchPage() {
 
   const [communityCoin, setCommunityCoin] = useState(false);
   const [communityBoard, setCommunityBoard] = useState(false);
-  const [antiSnipe, setAntiSnipe] = useState(false);
   const [maxWallet2pct, setMaxWallet2pct] = useState(false);
   const [featureBoost, setFeatureBoost] = useState(false);
   const [customSupply, setCustomSupply] = useState(false);
   const [supply, setSupply] = useState(DEFAULT_SUPPLY);
   const [decimals, setDecimals] = useState(() => defaultDecimalsForSupply(DEFAULT_SUPPLY));
-  const [initialBuyEth, setInitialBuyEth] = useState("");
+  const [initialBuyEth, setInitialBuyEth] = useState<string>(
+    CHAIN_CONFIG.minInstantSeedEth
+  );
   const [ownershipPct, setOwnershipPct] = useState<number | null>(null);
   const [feeSharing, setFeeSharing] = useState(false);
   const [feeShares, setFeeShares] = useState<FeeShareRow[]>([
@@ -376,12 +360,15 @@ export default function LaunchPage() {
       setShowBanner(Boolean(draft.showBanner));
       setCommunityCoin(Boolean(draft.communityCoin));
       setCommunityBoard(Boolean(draft.communityBoard));
-      setAntiSnipe(Boolean(draft.antiSnipe));
       setMaxWallet2pct(Boolean(draft.maxWallet2pct));
       setCustomSupply(Boolean(draft.customSupply));
       if (typeof draft.supply === "number" && draft.supply > 0) setSupply(draft.supply);
       if (typeof draft.decimals === "number") setDecimals(draft.decimals);
-      setInitialBuyEth(draft.initialBuyEth ?? "");
+      setInitialBuyEth(
+        draft.initialBuyEth && Number(draft.initialBuyEth) >= minInstantSeedEth()
+          ? draft.initialBuyEth
+          : CHAIN_CONFIG.minInstantSeedEth
+      );
       setOwnershipPct(
         typeof draft.ownershipPct === "number" ? draft.ownershipPct : null
       );
@@ -414,7 +401,6 @@ export default function LaunchPage() {
         showBanner,
         communityCoin,
         communityBoard,
-        antiSnipe,
         maxWallet2pct,
         customSupply,
         supply,
@@ -438,7 +424,6 @@ export default function LaunchPage() {
     showBanner,
     communityCoin,
     communityBoard,
-    antiSnipe,
     maxWallet2pct,
     customSupply,
     supply,
@@ -482,6 +467,8 @@ export default function LaunchPage() {
     let bondingCurve: string | undefined;
     let uniswapPool: string | undefined;
     let lpEth = 0;
+    let lpSupplyBps: number | undefined;
+    let tokensInLp = 0;
 
     for (const log of receipt.logs) {
       try {
@@ -512,22 +499,37 @@ export default function LaunchPage() {
           topics: log.topics,
         });
         if (decoded.eventName === "Graduated") {
-          const args = decoded.args as {
+          const args = decoded.args as unknown as {
             pool: `0x${string}`;
             ethLiquidity: bigint;
           };
           uniswapPool = args.pool;
           lpEth = Number(formatEther(args.ethLiquidity));
-          break;
+        }
+        if (decoded.eventName === "InstantSeeded") {
+          const args = decoded.args as unknown as {
+            lpSupplyBps: bigint;
+            tokensInLp: bigint;
+          };
+          lpSupplyBps = Number(args.lpSupplyBps);
+          tokensInLp = Number(formatEther(args.tokensInLp));
         }
       } catch {
-        /* not Graduated */
+        /* not curve event */
       }
     }
 
     void (async () => {
       try {
-        // Decode Bags-style creator buy (post-pool swap) from the same create tx
+        const supply = pending.metadata?.supply ?? DEFAULT_SUPPLY;
+        const deadSupply =
+          tokensInLp > 0 ? Math.max(0, supply - tokensInLp) : undefined;
+        const launchMeta = {
+          ...pending.metadata,
+          instantLaunch: true,
+          ...(lpSupplyBps != null ? { lpSupplyBps } : {}),
+          ...(deadSupply != null ? { deadSupply } : {}),
+        };
         let launchTrade: {
           ethAmount: number;
           tokenAmount: number;
@@ -541,7 +543,7 @@ export default function LaunchPage() {
               topics: log.topics,
             });
             if (decoded.eventName !== "Trade") continue;
-            const args = decoded.args as {
+            const args = decoded.args as unknown as {
               trader: `0x${string}`;
               isBuy: boolean;
               ethAmount: bigint;
@@ -585,7 +587,7 @@ export default function LaunchPage() {
             bondingCurve,
             txHash: hash,
             source: "onchain",
-            metadata: pending.metadata,
+            metadata: launchMeta,
             graduated: Boolean(uniswapPool),
             uniswapPool,
             realEthReserves: lpEth || undefined,
@@ -621,7 +623,7 @@ export default function LaunchPage() {
                 feeEth: 0,
                 txHash: hash,
                 // Don't fake bonding-curve virtuals after instant Uniswap seed
-                graduated: true,
+                graduated: Boolean(uniswapPool),
                 uniswapPool,
               }),
             });
@@ -657,6 +659,10 @@ export default function LaunchPage() {
               method: "POST",
             });
             await refreshTokens();
+            void fetch(`/api/tokens/${finalAddress}/verify`, {
+              method: "POST",
+              keepalive: true,
+            });
           } catch {
             /* ignore */
           }
@@ -707,30 +713,36 @@ export default function LaunchPage() {
     ? Math.max(1, Math.min(1e15, supply || DEFAULT_SUPPLY))
     : DEFAULT_SUPPLY;
 
+  const buyEthNum = Number(initialBuyEth) || 0;
+
   const preview = useMemo(() => {
-    const startPrice = initialTokenPriceEth(effectiveSupply);
-    const startMcap = marketCapEth(startPrice, effectiveSupply);
-    const gradsAt = graduationMarketCapEth(effectiveSupply, CHAIN_CONFIG.graduationThreshold);
+    const seed = launchInstantSeedEth(buyEthNum || minInstantSeedEth());
     const ownershipCosts = OWNERSHIP_PRESETS.map((pct) => ({
       pct,
-      eth: ethInForSupplyPercent(pct, effectiveSupply),
+      eth: ethInForInstantSupplyPercent(pct, effectiveSupply),
     }));
-    return { startPrice, startMcap, gradsAt, ownershipCosts };
-  }, [effectiveSupply]);
+    return {
+      seedEth: seed,
+      fdv: estimatedInstantFdvEth(seed),
+      lpPct: instantLpSupplyPct(seed),
+      ownershipCosts,
+    };
+  }, [effectiveSupply, buyEthNum]);
 
-  const buyEthNum = Number(initialBuyEth) || 0;
-  const seedEthNum = launchSeedEth(buyEthNum);
+  const seedEthForTx = launchInstantSeedEth(buyEthNum);
   const minEthNeeded = minEthToLaunch(buyEthNum, featureBoost);
   const walletEth = ethBalance ? Number(formatEther(ethBalance.value)) : 0;
   const feeShareTotalPct = feeShares.reduce((sum, row) => sum + (Number(row.pct) || 0), 0);
-  const seedSplit = splitLaunchSeed(seedEthNum);
+  const instantSplit = splitInstantSeed(seedEthForTx);
+  const instantFdv = estimatedInstantFdvEth(seedEthForTx);
+  const instantLpPct = instantLpSupplyPct(seedEthForTx);
   const receivedPct =
     buyEthNum > 0 || ownershipPct != null
-      ? supplyPercentForEthIn(seedEthNum, effectiveSupply)
+      ? supplyPercentForInstantSeed(seedEthForTx, effectiveSupply)
       : 0;
 
   const applyOwnershipPct = (pct: number) => {
-    const eth = ethInForSupplyPercent(pct, effectiveSupply);
+    const eth = ethInForInstantSupplyPercent(pct, effectiveSupply);
     setOwnershipPct(pct);
     setInitialBuyEth(Number.isFinite(eth) ? eth.toFixed(6).replace(/\.?0+$/, "") : "");
   };
@@ -789,13 +801,12 @@ export default function LaunchPage() {
     setShowBanner(false);
     setCommunityCoin(false);
     setCommunityBoard(false);
-    setAntiSnipe(false);
     setMaxWallet2pct(false);
     setFeatureBoost(false);
     setCustomSupply(false);
     setSupply(DEFAULT_SUPPLY);
     setDecimals(defaultDecimalsForSupply(DEFAULT_SUPPLY));
-    setInitialBuyEth("");
+    setInitialBuyEth(CHAIN_CONFIG.minInstantSeedEth);
     setOwnershipPct(null);
     setFeeSharing(false);
     setFeeShares([{ address: "", pct: "" }]);
@@ -830,24 +841,17 @@ export default function LaunchPage() {
       return;
     }
 
-    if (buyEthNum < Number(CHAIN_CONFIG.minSeedLiquidityEth)) {
-      setError(
-        `Set initial liquidity / first buy to at least ${CHAIN_CONFIG.minSeedLiquidityEth} ETH so a Uniswap pool is seeded and GMGN can chart it.`
-      );
-      return;
-    }
-
     const metadata: LaunchMetadata = {
       ...pickSocialMetadata(socials),
       bannerUri: bannerPreview || undefined,
       communityCoin,
       communityBoard,
-      antiSnipe,
+      instantLaunch: true,
       maxWallet2pct,
       customSupply,
       supply: effectiveSupply,
       decimals,
-      initialBuyEth: seedEthNum > 0 ? seedEthNum : undefined,
+      initialBuyEth: buyEthNum > 0 ? buyEthNum : undefined,
       ownershipPct: ownershipPct ?? undefined,
       feeSharing,
       feeShares: feeSharing ? parsedShares : undefined,
@@ -855,7 +859,14 @@ export default function LaunchPage() {
 
     if (CONTRACTS.factory) {
       const fee = parseEther(CHAIN_CONFIG.creationFee);
-      const seedWei = parseEther(String(launchSeedEth(buyEthNum)));
+      const seedWei = parseEther(String(launchInstantSeedEth(buyEthNum)));
+
+      if (seedWei <= BigInt(0)) {
+        setError(
+          `Launch requires at least ${CHAIN_CONFIG.minInstantSeedEth} ETH LP seed (plus creation fee).`
+        );
+        return;
+      }
 
       setStatus("pending");
       try {
@@ -888,8 +899,7 @@ export default function LaunchPage() {
           address: CONTRACTS.factory,
           abi: PUMP_ROBIN_FACTORY_ABI,
           functionName: "createToken",
-          args: [name, symbol, imagePreview, description, antiSnipe],
-          // creation fee + Uniswap seed (LP + creator buy)
+          args: [name, symbol, imagePreview, description],
           value: fee + seedWei,
         });
       } catch (err) {
@@ -947,8 +957,9 @@ export default function LaunchPage() {
             Launch your coin
           </h1>
           <p className="mt-2 max-w-xl text-[15px] leading-relaxed text-rh-muted">
-            Bags-style create + first buy in one wallet confirm —{" "}
-            {CHAIN_CONFIG.creationFee} ETH creation fee plus your ownership buy.
+            Create + seed Uniswap V3 locked LP in one wallet confirm —{" "}
+            {formatEthWithUsd(Number(CHAIN_CONFIG.creationFee), ethUsd)} creation fee plus
+            min {formatEthWithUsd(Number(CHAIN_CONFIG.minInstantSeedEth), ethUsd)} LP seed.
           </p>
         </header>
 
@@ -1120,13 +1131,6 @@ export default function LaunchPage() {
                 }}
               />
               <ToggleRow
-                title="Anti-snipe (fee decay)"
-                description={`Buys start at ${CHAIN_CONFIG.antiSnipeStartBps / 100}% fee, decay to ${CHAIN_CONFIG.antiSnipeEndBps / 100}% over ${CHAIN_CONFIG.antiSnipeDurationSec}s. Swaps still work on Uniswap/GMGN — snipers just pay more. Your first buy is exempt.`}
-                icon={<Shield className="h-4 w-4" />}
-                checked={antiSnipe}
-                onChange={setAntiSnipe}
-              />
-              <ToggleRow
                 title="2% max per wallet"
                 description="Caps each wallet at 2%"
                 icon={<Wallet className="h-4 w-4" />}
@@ -1134,8 +1138,8 @@ export default function LaunchPage() {
                 onChange={setMaxWallet2pct}
               />
               <ToggleRow
-                title={`Feature on Explore · ${CHAIN_CONFIG.featureBoostEth} ETH`}
-                description={`Pin in Featured for ${CHAIN_CONFIG.featureBoostDays} days (~$${CHAIN_CONFIG.featureBoostUsdHint}). Paid to platform.`}
+                title={`Feature on Explore · ${formatEthWithUsd(Number(CHAIN_CONFIG.featureBoostEth), ethUsd)}`}
+                description={`Pin in Featured for ${CHAIN_CONFIG.featureBoostDays} days. Paid to platform.`}
                 icon={<Sparkles className="h-4 w-4" />}
                 checked={featureBoost}
                 onChange={setFeatureBoost}
@@ -1318,10 +1322,11 @@ export default function LaunchPage() {
                 aria-hidden
                 className="pointer-events-none absolute -right-16 -top-16 h-40 w-40 rounded-full bg-rh-lime/10 blur-3xl"
               />
-              <SectionLabel>Ownership</SectionLabel>
+              <SectionLabel>LP seed & ownership</SectionLabel>
               <p className="mt-1 text-[13px] text-rh-muted">
-                How much of supply you buy at launch on Uniswap (max ~50% — half
-                of your seed buys tokens, half locks as LP).
+                Every launch seeds Uniswap V3 immediately (min{" "}
+                {CHAIN_CONFIG.minInstantSeedEth} ETH). ~{CHAIN_CONFIG.instantLpEthPct}%
+                locks as LP, ~{100 - CHAIN_CONFIG.instantLpEthPct}% buys tokens for you.
               </p>
 
               <div className="relative mt-4">
@@ -1331,7 +1336,7 @@ export default function LaunchPage() {
                   step="any"
                   value={initialBuyEth}
                   onChange={(e) => setBuyEthManual(e.target.value)}
-                  placeholder={CHAIN_CONFIG.minSeedLiquidityEth}
+                  placeholder="0"
                   className={cn(
                     fieldClass,
                     "pr-16 text-2xl font-medium tracking-tight placeholder:text-rh-dim/80"
@@ -1341,15 +1346,22 @@ export default function LaunchPage() {
                   ETH
                 </span>
               </div>
+              {buyEthNum > 0 && (
+                <p className="mt-1.5 text-xs tabular-nums text-rh-muted">
+                  ≈ {formatUsd(buyEthNum * ethUsd)}
+                </p>
+              )}
 
               <div className="mt-2.5 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-xs">
                 <p className="flex items-center gap-1.5 text-rh-muted">
                   <Wallet className="h-3.5 w-3.5 text-rh-lime" />
                   <span className="tabular-nums">
                     Wallet{" "}
-                    {walletReady || address
-                      ? `${walletEth.toFixed(4)} ETH`
-                      : "— connect to see"}
+                    {walletReady || address ? (
+                      <EthWithUsd eth={walletEth} ethUsd={ethUsd} layout="inline" />
+                    ) : (
+                      "— connect to see"
+                    )}
                   </span>
                 </p>
                 {buyEthNum > 0 || ownershipPct != null ? (
@@ -1362,7 +1374,8 @@ export default function LaunchPage() {
                   </p>
                 ) : (
                   <p className="text-rh-dim">
-                    Default seeds {CHAIN_CONFIG.minSeedLiquidityEth} ETH LP
+                    Min seed {CHAIN_CONFIG.minInstantSeedEth} ETH +{" "}
+                    {CHAIN_CONFIG.creationFee} ETH creation fee
                   </p>
                 )}
               </div>
@@ -1382,39 +1395,52 @@ export default function LaunchPage() {
                   >
                     <span className="block text-sm font-semibold">{pct}%</span>
                     <span className="mt-0.5 block text-[11px] tabular-nums text-rh-muted">
-                      {Number.isFinite(eth)
-                        ? `${eth < 1 ? eth.toFixed(4) : eth.toFixed(2)} ETH`
-                        : "—"}
+                      {Number.isFinite(eth) ? (
+                        <EthWithUsd
+                          eth={eth}
+                          ethUsd={ethUsd}
+                          layout="stacked"
+                          decimals={eth < 1 ? 4 : 2}
+                        />
+                      ) : (
+                        "—"
+                      )}
                     </span>
                   </button>
                 ))}
               </div>
 
               <p className="mt-3 text-[11px] leading-relaxed text-rh-dim">
-                Your seed ETH splits into locked Uniswap V3 LP (min{" "}
-                {CHAIN_CONFIG.minSeedLiquidityEth} ETH) and a creator buy in the
-                same tx
-                {seedEthNum > 0
-                  ? ` — ≈ ${seedSplit.lpEth.toFixed(4)} LP + ${seedSplit.buyEth.toFixed(4)} buy`
-                  : ""}
-                . Plus the {CHAIN_CONFIG.creationFee} ETH creation fee.
+                Higher % puts more tokens in the pool (rest is burned). Target starting
+                FDV ≈ {CHAIN_CONFIG.instantTargetFdvEth} ETH.
+                {seedEthForTx > 0 ? (
+                  <>
+                    {" "}
+                    Split ≈ {instantSplit.lpEth.toFixed(4)} LP +{" "}
+                    {instantSplit.buyEth.toFixed(4)} buy · ~{instantLpPct.toFixed(2)}%
+                    of supply in pool · est. FDV {instantFdv.toFixed(2)} ETH.
+                  </>
+                ) : null}{" "}
+                Plus {formatEthWithUsd(Number(CHAIN_CONFIG.creationFee), ethUsd)} creation fee.
               </p>
 
               <div className="mt-3 rounded-2xl border border-amber-400/20 bg-gradient-to-r from-amber-500/15 to-amber-500/5 px-4 py-3.5 text-sm leading-snug text-amber-100/95">
                 You need at least{" "}
                 <span className="font-semibold tabular-nums text-amber-50">
-                  {minEthNeeded.toFixed(4)} ETH
+                  <EthWithUsd eth={minEthNeeded} ethUsd={ethUsd} layout="inline" />
                 </span>
                 <span className="mt-1 block text-[11px] text-amber-100/70">
-                  {CHAIN_CONFIG.creationFee} creation + {seedEthNum.toFixed(4)}{" "}
-                  seed
+                  {formatEthWithUsd(Number(CHAIN_CONFIG.creationFee), ethUsd)} creation
+                  {seedEthForTx > 0
+                    ? ` + ${formatEthWithUsd(seedEthForTx, ethUsd)} LP seed`
+                    : ""}
                   {receivedPct > 0
                     ? ` (≈${receivedPct.toFixed(1)}% ownership)`
                     : ""}
                   {featureBoost
-                    ? ` + ${CHAIN_CONFIG.featureBoostEth} feature`
+                    ? ` + ${formatEthWithUsd(Number(CHAIN_CONFIG.featureBoostEth), ethUsd)} feature`
                     : ""}{" "}
-                  + ~{CHAIN_CONFIG.launchGasBufferEth} network gas on Robinhood
+                  + ~{formatEthWithUsd(Number(CHAIN_CONFIG.launchGasBufferEth), ethUsd)} network gas on Robinhood
                   {featureBoost
                     ? " · feature is a separate wallet confirm before create"
                     : ""}
@@ -1602,7 +1628,7 @@ export default function LaunchPage() {
                         {launching
                           ? "Confirm create + buy…"
                           : canLaunch
-                            ? `Launch + buy · ${minEthNeeded.toFixed(4)} ETH`
+                            ? `Launch + buy · ${formatEthWithUsd(minEthNeeded, ethUsd)}`
                             : "Add name & ticker to launch"}
                       </RhButton>
                     );
@@ -1671,29 +1697,33 @@ export default function LaunchPage() {
                   </dd>
                 </div>
                 <div className="flex justify-between gap-3">
-                  <dt className="text-rh-muted">Start price</dt>
+                  <dt className="text-rh-muted">Est. start FDV</dt>
                   <dd className="text-right tabular-nums text-white">
-                    {formatTinyEth(preview.startPrice)}
+                    <EthWithUsd eth={preview.fdv} ethUsd={ethUsd} layout="stacked" />
                   </dd>
                 </div>
                 <div className="flex justify-between gap-3">
-                  <dt className="text-rh-muted">Start market cap</dt>
-                  <dd className="text-right tabular-nums text-white">
-                    {formatMcap(preview.startMcap)}
-                  </dd>
-                </div>
-                <div className="flex justify-between gap-3">
-                  <dt className="text-rh-muted">Graduates at</dt>
+                  <dt className="text-rh-muted">LP supply</dt>
                   <dd className="text-right tabular-nums text-rh-lime">
-                    {formatMcap(preview.gradsAt)}
+                    ~{preview.lpPct.toFixed(2)}%
+                  </dd>
+                </div>
+                <div className="flex justify-between gap-3">
+                  <dt className="text-rh-muted">LP seed</dt>
+                  <dd className="text-right tabular-nums text-white">
+                    <EthWithUsd eth={preview.seedEth} ethUsd={ethUsd} layout="stacked" />
                   </dd>
                 </div>
                 {buyEthNum > 0 && (
                   <div className="flex justify-between gap-3">
                     <dt className="text-rh-muted">First buy</dt>
                     <dd className="text-right tabular-nums text-white">
-                      {buyEthNum.toFixed(4)} ETH
-                      {ownershipPct != null ? ` · ${ownershipPct}%` : ""}
+                      <EthWithUsd eth={buyEthNum} ethUsd={ethUsd} layout="stacked" />
+                      {ownershipPct != null ? (
+                        <span className="block text-[11px] text-rh-muted">
+                          {ownershipPct}% of supply
+                        </span>
+                      ) : null}
                     </dd>
                   </div>
                 )}
@@ -1701,13 +1731,11 @@ export default function LaunchPage() {
 
               {(communityCoin ||
                 communityBoard ||
-                antiSnipe ||
                 maxWallet2pct ||
                 feeSharing) && (
                 <div className="mt-4 flex flex-wrap gap-1.5">
                   {communityCoin && <Chip>Community fees</Chip>}
                   {communityBoard && <Chip>Board</Chip>}
-                  {antiSnipe && <Chip>Anti-snipe 80%→0% / 10s</Chip>}
                   {maxWallet2pct && <Chip>2% max</Chip>}
                   {feeSharing && <Chip>Fee share</Chip>}
                 </div>
@@ -1715,7 +1743,10 @@ export default function LaunchPage() {
 
               <div className="mt-5 rounded-2xl border border-white/[0.06] bg-black/35 px-3.5 py-3 text-[12px] leading-relaxed text-rh-muted">
                 Ready when you are — connect, name it, launch for{" "}
-                <span className="text-rh-lime">{CHAIN_CONFIG.creationFee} ETH</span>.
+                <span className="text-rh-lime">
+                  {formatEthWithUsd(Number(CHAIN_CONFIG.creationFee), ethUsd)}
+                </span>
+                .
               </div>
             </Panel>
           </aside>

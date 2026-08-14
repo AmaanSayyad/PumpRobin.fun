@@ -6,16 +6,17 @@ import "./BondingCurve.sol";
 
 /**
  * @title PumpRobinFactory
- * @notice Factory for tokens that launch straight into a Uniswap V3 pool.
- * @dev createToken: creation fee + seed ETH (≥ MIN_SEED). Excess seeds locked
- *      LP and optionally buys for the creator in the same tx (Bags create+buy).
- *      Optional antiSnipe arms an 80%→0% buy fee decay for 10s after launch.
+ * @notice Every launch seeds Uniswap V3 immediately with locked LP.
+ * @dev Min seed ~$5 (0.002 ETH) + 0.004 ETH creation fee. BondingCurve buy/sell
+ *      remain on-chain for legacy tokens only — new launches always call seedInstantUniswap.
  */
 contract PumpRobinFactory {
-    uint256 public constant CREATION_FEE = 0.0005 ether;
+    /// @notice ~$10 at $2.5k ETH — platform launch fee
+    uint256 public constant CREATION_FEE = 0.004 ether;
+    /// @notice Must match BondingCurve.MIN_INSTANT_SEED
+    uint256 public constant MIN_INSTANT_SEED = 0.002 ether;
     uint256 public constant INITIAL_VIRTUAL_ETH = 1.3 ether;
     uint256 public constant INITIAL_VIRTUAL_TOKENS = 1_073_000_000 * 1e18;
-    uint256 public constant MIN_SEED_LIQUIDITY = 0.01 ether;
 
     address public owner;
     address public feeCollector;
@@ -29,8 +30,7 @@ contract PumpRobinFactory {
         address indexed creator,
         string name,
         string symbol,
-        string imageUri,
-        bool antiSnipe
+        string imageUri
     );
     event FeeCollectorUpdated(address indexed previous, address indexed next);
 
@@ -44,12 +44,14 @@ contract PumpRobinFactory {
         string calldata name,
         string calldata symbol,
         string calldata imageUri,
-        string calldata description,
-        bool antiSnipe
+        string calldata description
     ) external payable returns (address token, address bondingCurve) {
-        require(msg.value >= CREATION_FEE + MIN_SEED_LIQUIDITY, "Need seed liquidity");
         require(bytes(name).length > 0, "Name required");
         require(bytes(symbol).length > 0, "Symbol required");
+        require(
+            msg.value >= CREATION_FEE + MIN_INSTANT_SEED,
+            "Need creation fee + seed"
+        );
 
         PumpRobinToken newToken = new PumpRobinToken(
             name,
@@ -57,7 +59,6 @@ contract PumpRobinFactory {
             imageUri,
             description,
             msg.sender,
-            antiSnipe,
             feeCollector
         );
 
@@ -70,13 +71,11 @@ contract PumpRobinFactory {
             INITIAL_VIRTUAL_TOKENS
         );
 
-        newToken.setLauncher(address(curve));
-
-        uint256 supply = newToken.totalSupply();
-        newToken.transfer(address(curve), supply);
-
         token = address(newToken);
         bondingCurve = address(curve);
+
+        uint256 supply = newToken.totalSupply();
+        newToken.transfer(bondingCurve, supply);
 
         allTokens.push(token);
         tokenToCurve[token] = bondingCurve;
@@ -88,15 +87,14 @@ contract PumpRobinFactory {
             msg.sender,
             name,
             symbol,
-            imageUri,
-            antiSnipe
+            imageUri
         );
 
         (bool feeSent, ) = feeCollector.call{value: CREATION_FEE}("");
         require(feeSent, "Fee transfer failed");
 
-        uint256 seedEth = msg.value - CREATION_FEE;
-        curve.seedAndGraduate{value: seedEth}(msg.sender, 0);
+        uint256 remainder = msg.value - CREATION_FEE;
+        curve.seedInstantUniswap{value: remainder}(msg.sender, 0);
     }
 
     function setFeeCollector(address next) external {
@@ -117,10 +115,6 @@ contract PumpRobinFactory {
 
     function creationFee() external pure returns (uint256) {
         return CREATION_FEE;
-    }
-
-    function minSeedLiquidity() external pure returns (uint256) {
-        return MIN_SEED_LIQUIDITY;
     }
 
     receive() external payable {}

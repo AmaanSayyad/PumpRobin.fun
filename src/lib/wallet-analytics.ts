@@ -1,4 +1,4 @@
-import type { TokenData, TradeData, TokenRecord, TradeRecord } from "@/lib/data";
+import type { TokenData, TradeData, TokenRecord, TradeRecord } from "@/lib/data-types";
 import { enrichToken } from "@/lib/data";
 import { DEFAULT_SUPPLY } from "@/lib/curve";
 

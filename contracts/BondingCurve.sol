@@ -10,10 +10,12 @@ import "./libraries/SqrtPriceMath.sol";
 
 /**
  * @title BondingCurve
- * @notice Launch vault: seeds a Uniswap V3 TOKEN/WETH pool (1%) at create time so
- *         GMGN / DEX Screener / Uniswap index liquidity immediately.
- * @dev Legacy buy/sell curve functions remain but revert after graduation. New
- *      launches call seedAndGraduate from the factory in the same create tx.
+ * @notice pump.fun-style bonding curve until graduation, then Uniswap V3.
+ * @dev Trades on the constant-product curve until `GRADUATION_THRESHOLD` ETH
+ *      is raised. Each buy/sell pays 1% to the token creator + 1% to the
+ *      platform (accumulated; auto-paid or claimable at ~$10 threshold).
+ *      After graduation, a 2% token transfer fee applies on every DEX trade
+ *      (GMGN, Axiom, Uniswap, etc.) — not only via PumpRobin UI.
  */
 contract BondingCurve is ReentrancyGuard {
     /// @dev Robinhood Chain Uniswap V3 + WETH (canonical deployments)
@@ -21,22 +23,26 @@ contract BondingCurve is ReentrancyGuard {
     address public constant UNISWAP_V3_FACTORY = 0x1f7d7550B1b028f7571E69A784071F0205FD2EfA;
     address public constant POSITION_MANAGER = 0x73991a25C818Bf1f1128dEAaB1492D45638DE0D3;
     address public constant SWAP_ROUTER = 0xCaf681a66D020601342297493863E78C959E5cb2;
-    /// @dev Matches VLAD-style Robinhood memecoin pools on DEX Screener / GMGN
     uint24 public constant POOL_FEE = 10_000; // 1%
-    int24 public constant TICK_LOWER = -887_200; // full-range for tickSpacing 200
+    /// @notice Minimum total seed for instant Uniswap launch (~$5 at $2.5k ETH)
+    uint256 public constant MIN_INSTANT_SEED = 0.002 ether;
+    /// @notice Target starting FDV — smaller seeds use fewer tokens in LP
+    uint256 public constant TARGET_START_FDV_ETH = 2 ether;
+    /// @notice Dynamic LP supply bounds (bps of 1B total supply)
+    uint256 public constant MIN_LP_SUPPLY_BPS = 5; // 0.05%
+    uint256 public constant MAX_LP_SUPPLY_BPS = 10_000; // 100% — needed for ~30% creator buy
+    /// @notice ETH split for instant launch: LP vs creator buy
+    uint256 public constant INSTANT_LP_ETH_BPS = 7_000; // 70% LP / 30% buy
+    int24 public constant TICK_LOWER = -887_200;
     int24 public constant TICK_UPPER = 887_200;
-    address public constant LP_DEAD = 0x000000000000000000000000000000000000dEaD;
-    /// @dev Minimum ETH that must seed the Uniswap pool (indexers need real liq)
-    uint256 public constant MIN_SEED = 0.01 ether;
+    /// @notice LP NFT recipient — permanent lock (indexers can verify owner)
+    address public constant LP_LOCK_RECIPIENT =
+        0x000000000000000000000000000000000000dEaD;
 
     PumpRobinToken public immutable token;
     address public immutable creator;
     address public immutable factory;
-    /// @notice Receives dust / platform residual ETH
     address public immutable platformFeeRecipient;
-    /// @notice Legacy constant (curve trade fees no longer used post day-0 pool)
-    address public constant CREATOR_FEE_RECIPIENT =
-        0x4654FE1e59547372Db57e9F6865aa7aC3A0C77a3;
 
     uint256 public virtualEthReserves;
     uint256 public virtualTokenReserves;
@@ -45,8 +51,15 @@ contract BondingCurve is ReentrancyGuard {
     uint256 public constant TOTAL_SUPPLY = 1_000_000_000 * 1e18;
     uint256 public constant GRADUATION_THRESHOLD = 8 ether;
     uint256 public constant CREATOR_FEE_BPS = 100;
-    uint256 public constant PLATFORM_FEE_BPS = 30;
+    uint256 public constant PLATFORM_FEE_BPS = 100;
     uint256 public constant FEE_BPS = CREATOR_FEE_BPS + PLATFORM_FEE_BPS;
+    /// @notice ~$10 at $2.5k ETH — auto-distribute / manual claim threshold
+    uint256 public constant FEE_CLAIM_THRESHOLD = 0.004 ether;
+
+    uint256 public pendingCreatorFees;
+    uint256 public pendingPlatformFees;
+    uint256 public pendingCreatorTokenFees;
+    uint256 public pendingPlatformTokenFees;
 
     bool public graduated;
     address public uniswapPool;
@@ -59,7 +72,40 @@ contract BondingCurve is ReentrancyGuard {
         uint256 tokenAmount,
         uint256 newPrice
     );
-    event Graduated(address indexed pool, uint256 ethLiquidity, uint256 tokenLiquidity, uint256 lpTokenId);
+    event Graduated(
+        address indexed pool,
+        uint256 ethLiquidity,
+        uint256 tokenLiquidity,
+        uint256 lpTokenId,
+        address lpLockedTo
+    );
+    event FeesAccumulated(
+        address indexed creator,
+        uint256 creatorFee,
+        address indexed platform,
+        uint256 platformFee
+    );
+    event FeesDistributed(
+        address indexed creator,
+        uint256 creatorFee,
+        address indexed platform,
+        uint256 platformFee
+    );
+    event CreatorFeesClaimed(address indexed creator, uint256 amount);
+    event TokenFeesAccumulated(
+        address indexed creator,
+        uint256 creatorTokens,
+        address indexed platform,
+        uint256 platformTokens
+    );
+    event InstantSeeded(
+        address indexed pool,
+        uint256 lpEth,
+        uint256 buyEth,
+        uint256 lpSupplyBps,
+        uint256 tokensInLp,
+        uint256 estimatedFdvEth
+    );
 
     constructor(
         address token_,
@@ -91,7 +137,6 @@ contract BondingCurve is ReentrancyGuard {
         return (realEthReserves * 100) / GRADUATION_THRESHOLD;
     }
 
-    /// @notice Legacy curve buy — disabled once the Uniswap pool exists
     function buy(uint256 minTokens) external payable nonReentrant {
         _buy(msg.sender, minTokens);
     }
@@ -102,11 +147,11 @@ contract BondingCurve is ReentrancyGuard {
     }
 
     /**
-     * @notice Factory-only: seed Uniswap V3 pool immediately + optional creator buy.
-     * @dev Half of msg.value seeds locked LP (floored at MIN_SEED); the rest buys
-     *      tokens for `recipient` on the new pool (Bags-style create+buy).
+     * @notice Factory-only: skip bonding curve and seed Uniswap immediately.
+     * @dev LP token % scales with seed size so FDV stays ~TARGET_START_FDV_ETH+.
+     *      Small seeds (e.g. $5) put fewer tokens in the pool — each buy stays expensive.
      */
-    function seedAndGraduate(address recipient, uint256 minTokensOut)
+    function seedInstantUniswap(address recipient, uint256 minTokensOut)
         external
         payable
         nonReentrant
@@ -114,60 +159,164 @@ contract BondingCurve is ReentrancyGuard {
         require(msg.sender == factory, "Only factory");
         require(!graduated, "Graduated");
         require(recipient != address(0), "Bad recipient");
-        require(msg.value >= MIN_SEED, "Need seed liquidity");
+        require(msg.value >= MIN_INSTANT_SEED, "Need instant seed");
 
-        uint256 buyEth = msg.value / 2;
-        uint256 lpEth = msg.value - buyEth;
-        if (lpEth < MIN_SEED) {
-            lpEth = MIN_SEED;
-            require(msg.value > lpEth, "Need seed liquidity");
-            buyEth = msg.value - lpEth;
+        uint256 lpEth = (msg.value * INSTANT_LP_ETH_BPS) / 10_000;
+        uint256 buyEth = msg.value - lpEth;
+
+        uint256 lpSupplyBps = _lpSupplyBpsForLpEth(lpEth);
+        uint256 tokenForLp = (TOTAL_SUPPLY * lpSupplyBps) / 10_000;
+
+        uint256 balance = IERC20(address(token)).balanceOf(address(this));
+        require(tokenForLp > 0 && tokenForLp <= balance, "Bad lp tokens");
+        uint256 excess = balance - tokenForLp;
+        if (excess > 0) {
+            IERC20(address(token)).transfer(LP_LOCK_RECIPIENT, excess);
         }
 
         _graduateWithEth(lpEth);
 
+        uint256 estimatedFdv = (lpEth * 10_000) / lpSupplyBps;
+        emit InstantSeeded(
+            uniswapPool,
+            lpEth,
+            buyEth,
+            lpSupplyBps,
+            tokenForLp,
+            estimatedFdv
+        );
+
         if (buyEth > 0) {
             uint256 tokensOut = _swapEthForTokens(recipient, buyEth, minTokensOut);
-            uint256 price = getPrice();
-            if (price == 0 && tokensOut > 0) {
-                price = (buyEth * 1e18) / tokensOut;
-            }
+            uint256 price = tokensOut > 0 ? (buyEth * 1e18) / tokensOut : getPrice();
             emit Trade(recipient, true, buyEth, tokensOut, price);
-        }
-
-        // Arm fee-decay after creator buy so first-buy is not sniped by the 80% fee
-        if (token.antiSnipeEnabled()) {
-            token.armTrading(uniswapPool);
         }
     }
 
-    function _buy(address recipient, uint256 minTokens) internal {
-        require(!graduated, "Graduated - trade on Uniswap");
-        require(msg.value > 0, "No ETH sent");
+    /// @notice Buy on Uniswap — 2% token transfer fee applies automatically
+    function buyOnUniswap(uint256 minTokensOut) external payable nonReentrant {
+        require(graduated && uniswapPool != address(0), "No pool");
+        require(msg.value > 0, "No ETH");
 
-        uint256 fee = (msg.value * FEE_BPS) / 10000;
-        uint256 ethAfterFee = msg.value - fee;
+        uint256 tokensOut = _swapEthForTokens(msg.sender, msg.value, minTokensOut);
+        uint256 price = tokensOut > 0 ? (msg.value * 1e18) / tokensOut : getPrice();
+        emit Trade(msg.sender, true, msg.value, tokensOut, price);
+    }
 
-        uint256 tokenAmount = _calculateBuyReturn(ethAfterFee);
-        require(tokenAmount >= minTokens, "Slippage exceeded");
-        require(tokenAmount <= realTokenReserves, "Insufficient tokens");
+    /// @notice Sell on Uniswap — 2% token transfer fee applies automatically
+    function sellOnUniswap(uint256 tokenAmount, uint256 minEthOut)
+        external
+        nonReentrant
+    {
+        require(graduated && uniswapPool != address(0), "No pool");
+        require(tokenAmount > 0, "No tokens");
 
-        virtualEthReserves += ethAfterFee;
-        virtualTokenReserves -= tokenAmount;
-        realEthReserves += ethAfterFee;
-        realTokenReserves -= tokenAmount;
+        IERC20(address(token)).transferFrom(msg.sender, address(this), tokenAmount);
+        IERC20(address(token)).approve(SWAP_ROUTER, tokenAmount);
 
-        IERC20(address(token)).transfer(recipient, tokenAmount);
+        uint256 wethOut = ISwapRouter02(SWAP_ROUTER).exactInputSingle(
+            ISwapRouter02.ExactInputSingleParams({
+                tokenIn: address(token),
+                tokenOut: WETH,
+                fee: POOL_FEE,
+                recipient: address(this),
+                amountIn: tokenAmount,
+                amountOutMinimum: 0,
+                sqrtPriceLimitX96: 0
+            })
+        );
 
-        if (fee > 0) {
-            _distributeFee(fee);
+        IWETH(WETH).withdraw(wethOut);
+        require(wethOut >= minEthOut, "Slippage exceeded");
+
+        (bool sent, ) = msg.sender.call{value: wethOut}("");
+        require(sent, "ETH transfer failed");
+
+        uint256 price = tokenAmount > 0 ? (wethOut * 1e18) / tokenAmount : getPrice();
+        emit Trade(msg.sender, false, wethOut, tokenAmount, price);
+    }
+
+    function getPendingFees()
+        external
+        view
+        returns (
+            uint256 creatorEth,
+            uint256 platformEth,
+            uint256 creatorTokens,
+            uint256 platformTokens,
+            uint256 claimThreshold
+        )
+    {
+        return (
+            pendingCreatorFees,
+            pendingPlatformFees,
+            pendingCreatorTokenFees,
+            pendingPlatformTokenFees,
+            FEE_CLAIM_THRESHOLD
+        );
+    }
+
+    function claimCreatorFees() external nonReentrant {
+        require(msg.sender == creator, "Not creator");
+        uint256 ethOut = pendingCreatorFees;
+        uint256 tokens = pendingCreatorTokenFees;
+        uint256 tokenEthVal = _tokenFeesEthValue(tokens);
+        require(ethOut + tokenEthVal >= FEE_CLAIM_THRESHOLD, "Below threshold");
+
+        pendingCreatorFees = 0;
+        pendingCreatorTokenFees = 0;
+
+        if (tokens > 0) {
+            ethOut += _swapTokensForEth(tokens);
         }
+        require(ethOut > 0, "Nothing to claim");
+        (bool ok, ) = creator.call{value: ethOut}("");
+        require(ok, "Creator payout failed");
+        emit CreatorFeesClaimed(creator, ethOut);
+    }
 
-        emit Trade(recipient, true, msg.value, tokenAmount, getPrice());
+    function claimPlatformFees() external nonReentrant {
+        require(msg.sender == platformFeeRecipient, "Not platform");
+        uint256 ethOut = pendingPlatformFees;
+        uint256 tokens = pendingPlatformTokenFees;
+        uint256 tokenEthVal = _tokenFeesEthValue(tokens);
+        require(ethOut + tokenEthVal >= FEE_CLAIM_THRESHOLD, "Below threshold");
 
-        if (realEthReserves >= GRADUATION_THRESHOLD) {
-            _graduateWithEth(address(this).balance);
+        pendingPlatformFees = 0;
+        pendingPlatformTokenFees = 0;
+
+        if (tokens > 0) {
+            ethOut += _swapTokensForEth(tokens);
         }
+        require(ethOut > 0, "Nothing to claim");
+        (bool ok, ) = platformFeeRecipient.call{value: ethOut}("");
+        require(ok, "Platform payout failed");
+        emit FeesDistributed(creator, 0, platformFeeRecipient, ethOut);
+    }
+
+    /// @notice Preview instant-launch economics for a seed amount (excl. creation fee)
+    function previewInstantLaunch(uint256 seedEth)
+        external
+        pure
+        returns (
+            uint256 lpEth,
+            uint256 buyEth,
+            uint256 lpSupplyBps,
+            uint256 estimatedFdvEth
+        )
+    {
+        lpEth = (seedEth * INSTANT_LP_ETH_BPS) / 10_000;
+        buyEth = seedEth - lpEth;
+        lpSupplyBps = _lpSupplyBpsForLpEth(lpEth);
+        estimatedFdvEth = (lpEth * 10_000) / lpSupplyBps;
+    }
+
+    function _lpSupplyBpsForLpEth(uint256 lpEth) internal pure returns (uint256) {
+        if (lpEth == 0) return MIN_LP_SUPPLY_BPS;
+        uint256 bps = (lpEth * 10_000) / TARGET_START_FDV_ETH;
+        if (bps < MIN_LP_SUPPLY_BPS) return MIN_LP_SUPPLY_BPS;
+        if (bps > MAX_LP_SUPPLY_BPS) return MAX_LP_SUPPLY_BPS;
+        return bps;
     }
 
     function sell(uint256 tokenAmount, uint256 minEth) external nonReentrant {
@@ -175,7 +324,7 @@ contract BondingCurve is ReentrancyGuard {
         require(tokenAmount > 0, "No tokens");
 
         uint256 ethReturn = _calculateSellReturn(tokenAmount);
-        uint256 fee = (ethReturn * FEE_BPS) / 10000;
+        uint256 fee = (ethReturn * FEE_BPS) / 10_000;
         uint256 ethAfterFee = ethReturn - fee;
         require(ethAfterFee >= minEth, "Slippage exceeded");
 
@@ -190,10 +339,39 @@ contract BondingCurve is ReentrancyGuard {
         require(sent, "ETH transfer failed");
 
         if (fee > 0) {
-            _distributeFee(fee);
+            _accumulateFee(fee);
         }
 
         emit Trade(msg.sender, false, ethAfterFee, tokenAmount, getPrice());
+    }
+
+    function _buy(address recipient, uint256 minTokens) internal {
+        require(!graduated, "Graduated - trade on Uniswap");
+        require(msg.value > 0, "No ETH sent");
+
+        uint256 fee = (msg.value * FEE_BPS) / 10_000;
+        uint256 ethAfterFee = msg.value - fee;
+
+        uint256 tokenAmount = _calculateBuyReturn(ethAfterFee);
+        require(tokenAmount >= minTokens, "Slippage exceeded");
+        require(tokenAmount <= realTokenReserves, "Insufficient tokens");
+
+        virtualEthReserves += ethAfterFee;
+        virtualTokenReserves -= tokenAmount;
+        realEthReserves += ethAfterFee;
+        realTokenReserves -= tokenAmount;
+
+        IERC20(address(token)).transfer(recipient, tokenAmount);
+
+        if (fee > 0) {
+            _accumulateFee(fee);
+        }
+
+        emit Trade(recipient, true, msg.value, tokenAmount, getPrice());
+
+        if (realEthReserves >= GRADUATION_THRESHOLD) {
+            _graduateWithEth(address(this).balance);
+        }
     }
 
     function _calculateBuyReturn(uint256 ethAmount) internal view returns (uint256) {
@@ -210,17 +388,29 @@ contract BondingCurve is ReentrancyGuard {
         return virtualEthReserves - newEthReserves;
     }
 
-    function _distributeFee(uint256 fee) internal {
+    function _accumulateFee(uint256 fee) internal {
         uint256 creatorFee = (fee * CREATOR_FEE_BPS) / FEE_BPS;
         uint256 platformFee = fee - creatorFee;
+        pendingCreatorFees += creatorFee;
+        pendingPlatformFees += platformFee;
+        emit FeesAccumulated(creator, creatorFee, platformFeeRecipient, platformFee);
+        _maybeAutoDistribute();
+    }
 
-        if (creatorFee > 0) {
-            (bool c, ) = CREATOR_FEE_RECIPIENT.call{value: creatorFee}("");
-            require(c, "Creator fee failed");
+    function _maybeAutoDistribute() internal {
+        if (pendingCreatorFees >= FEE_CLAIM_THRESHOLD) {
+            uint256 amt = pendingCreatorFees;
+            pendingCreatorFees = 0;
+            (bool c, ) = creator.call{value: amt}("");
+            require(c, "Creator payout failed");
+            emit CreatorFeesClaimed(creator, amt);
         }
-        if (platformFee > 0) {
-            (bool p, ) = platformFeeRecipient.call{value: platformFee}("");
-            require(p, "Platform fee failed");
+        if (pendingPlatformFees >= FEE_CLAIM_THRESHOLD) {
+            uint256 amt = pendingPlatformFees;
+            pendingPlatformFees = 0;
+            (bool p, ) = platformFeeRecipient.call{value: amt}("");
+            require(p, "Platform payout failed");
+            emit FeesDistributed(creator, 0, platformFeeRecipient, amt);
         }
     }
 
@@ -260,7 +450,7 @@ contract BondingCurve is ReentrancyGuard {
                 amount1Desired: amount1,
                 amount0Min: 0,
                 amount1Min: 0,
-                recipient: LP_DEAD,
+                recipient: LP_LOCK_RECIPIENT,
                 deadline: block.timestamp
             })
         );
@@ -273,7 +463,7 @@ contract BondingCurve is ReentrancyGuard {
         uniswapPool = pool;
         lpTokenId = tokenId;
 
-        emit Graduated(pool, ethLiq, tokenLiq, tokenId);
+        emit Graduated(pool, ethLiq, tokenLiq, tokenId, LP_LOCK_RECIPIENT);
     }
 
     function _swapEthForTokens(
@@ -304,11 +494,34 @@ contract BondingCurve is ReentrancyGuard {
         if (amount == 0) return;
         if (asset == WETH) {
             IWETH(WETH).withdraw(amount);
-            (bool ok, ) = platformFeeRecipient.call{value: amount}("");
-            require(ok, "Dust ETH failed");
+            _accumulateFee(amount);
         } else {
-            IERC20(asset).transfer(LP_DEAD, amount);
+            IERC20(asset).transfer(LP_LOCK_RECIPIENT, amount);
         }
+    }
+
+    function _tokenFeesEthValue(uint256 tokenAmt) internal view returns (uint256) {
+        if (tokenAmt == 0) return 0;
+        uint256 price = getPrice();
+        if (price == 0) return 0;
+        return (tokenAmt * price) / 1e18;
+    }
+
+    function _swapTokensForEth(uint256 tokenAmount) internal returns (uint256 ethOut) {
+        require(tokenAmount > 0, "No tokens");
+        IERC20(address(token)).approve(SWAP_ROUTER, tokenAmount);
+        ethOut = ISwapRouter02(SWAP_ROUTER).exactInputSingle(
+            ISwapRouter02.ExactInputSingleParams({
+                tokenIn: address(token),
+                tokenOut: WETH,
+                fee: POOL_FEE,
+                recipient: address(this),
+                amountIn: tokenAmount,
+                amountOutMinimum: 0,
+                sqrtPriceLimitX96: 0
+            })
+        );
+        IWETH(WETH).withdraw(ethOut);
     }
 
     receive() external payable {}

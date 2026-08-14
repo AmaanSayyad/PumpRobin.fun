@@ -1,6 +1,9 @@
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 import { enrichToken, pickSocialMetadata, type LaunchMetadata } from "@/lib/data";
 import { addToken, readPlatformState } from "@/lib/registry";
+import { verifyLaunchedToken } from "@/lib/verify/blockscout";
+
+export const maxDuration = 300;
 
 export async function GET() {
   const state = await readPlatformState();
@@ -58,7 +61,8 @@ export async function POST(request: Request) {
       bannerUri: meta.bannerUri ? String(meta.bannerUri) : undefined,
       communityCoin: Boolean(meta.communityCoin),
       communityBoard: Boolean(meta.communityBoard),
-      antiSnipe: Boolean(meta.antiSnipe),
+      antiSnipe: Boolean(meta.instantLaunch ?? meta.antiSnipe),
+      instantLaunch: Boolean(meta.instantLaunch),
       maxWallet2pct: Boolean(meta.maxWallet2pct),
       customSupply: Boolean(meta.customSupply),
       supply: meta.supply ? Number(meta.supply) : undefined,
@@ -79,5 +83,27 @@ export async function POST(request: Request) {
   });
 
   const state = await readPlatformState();
+  const onchainAddress =
+    source === "onchain" &&
+    typeof token.address === "string" &&
+    /^0x[a-fA-F0-9]{40}$/.test(token.address)
+      ? token.address.toLowerCase()
+      : null;
+
+  if (onchainAddress) {
+    after(async () => {
+      try {
+        const results = await verifyLaunchedToken(onchainAddress);
+        console.info("[verify]", onchainAddress, JSON.stringify(results));
+      } catch (err) {
+        console.error(
+          "[verify] failed",
+          onchainAddress,
+          err instanceof Error ? err.message : err
+        );
+      }
+    });
+  }
+
   return NextResponse.json({ token: enrichToken(token, state.trades) }, { status: 201 });
 }

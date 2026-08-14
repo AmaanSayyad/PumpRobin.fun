@@ -4,8 +4,8 @@ import Link from "next/link";
 import { motion } from "framer-motion";
 import { Globe, Sparkles } from "lucide-react";
 import { cn, formatEth, timeAgo } from "@/lib/utils";
-import type { TokenData } from "@/lib/data";
-import { isTokenFeatured } from "@/lib/data";
+import type { TokenData } from "@/lib/data-types";
+import { isTokenFeatured } from "@/lib/data-client";
 import { TokenLogo } from "@/components/token-logo";
 
 interface TokenCardProps {
