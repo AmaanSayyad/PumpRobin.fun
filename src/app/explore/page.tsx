@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 import { MarketTable } from "@/components/tokens/market-table";
 import { useAppStore } from "@/lib/store";
-import { hasExploreTxns, hasTokenLogo, isPumpRobinLaunch, isTokenFeatured } from "@/lib/data-client";
+import { hasExploreTxns, hasTokenLogo, isHiddenToken, isPumpRobinLaunch, isTokenFeatured } from "@/lib/data-client";
 import { cn } from "@/lib/utils";
 import type { TokenData } from "@/lib/data-types";
 
@@ -222,7 +222,8 @@ function ExploreInner() {
   const displayed = search.trim()
     ? (searchHits ?? browsing)
     : browsing.filter((t) =>
-        isMarketTab ? hasTokenLogo(t) && hasExploreTxns(t) : hasTokenLogo(t)
+        !isHiddenToken(t) &&
+        (isMarketTab ? hasTokenLogo(t) && hasExploreTxns(t) : hasTokenLogo(t))
       );
   const loading = search.trim()
     ? searching

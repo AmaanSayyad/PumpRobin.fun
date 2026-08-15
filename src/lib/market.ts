@@ -1,7 +1,7 @@
 import { isAddress, type Address } from "viem";
 import { ERC20_ABI, UNISWAP_V3_FACTORY_ABI } from "@/lib/contracts";
 import { UNISWAP_V3, WETH_ADDRESS } from "@/lib/chain";
-import { isHiddenToken } from "@/lib/data-client";
+import { isHiddenAddress, isHiddenToken } from "@/lib/data-client";
 import { fetchEthUsdPrice } from "@/lib/eth-usd";
 import { getRobinhoodPublicClient } from "@/lib/onchain-curve";
 import { enrichToken } from "@/lib/data";
@@ -335,7 +335,7 @@ function geckoPoolToToken(
 function mergeTokens(list: TokenData[]): TokenData[] {
   const byAddr = new Map<string, TokenData>();
   for (const t of list) {
-    if (!t.address || isHiddenToken(t.address) || t.name.length > 48 || t.symbol.length > 16) continue;
+    if (!t.address || isHiddenToken(t) || t.name.length > 48 || t.symbol.length > 16) continue;
     const key = t.address.toLowerCase();
     const prev = byAddr.get(key);
     if (!prev) {
@@ -661,7 +661,7 @@ async function resolveOnchain(address: Address, ethUsd: number): Promise<TokenDa
 }
 
 export async function resolveMarketToken(address: string): Promise<TokenData | null> {
-  if (!isAddress(address) || isHiddenToken(address)) return null;
+  if (!isAddress(address) || isHiddenAddress(address)) return null;
   const ethUsd = await fetchEthUsdPrice();
   const fromDex = await resolveFromDex(address, ethUsd);
   if (fromDex) return fromDex;
@@ -669,7 +669,7 @@ export async function resolveMarketToken(address: string): Promise<TokenData | n
 }
 
 export async function resolveAnyToken(address: string): Promise<TokenData | null> {
-  if (!isAddress(address) || isHiddenToken(address)) return null;
+  if (!isAddress(address) || isHiddenAddress(address)) return null;
   const state = await readPlatformState();
   const local = state.tokens.find(
     (t) => t.address.toLowerCase() === address.toLowerCase()

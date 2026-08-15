@@ -2,12 +2,25 @@ import type { LaunchMetadata, PlatformStats, TradeData, TradeRecord } from "./da
 
 /** Tokens that must never appear in browse, search, or token pages. */
 const HIDDEN_TOKEN_ADDRESSES = new Set([
-  "0x35a59ed3b6c90ef7e9db18d64c6e577633281375", // VLAD
+  "0x35a59ed3b6c90ef7e9db18d64c6e577633281375",
 ]);
+const HIDDEN_TICKERS = new Set(["vlad"]);
 
-export function isHiddenToken(address?: string | null): boolean {
-  if (!address) return false;
-  return HIDDEN_TOKEN_ADDRESSES.has(address.toLowerCase());
+export function isHiddenAddress(address?: string | null): boolean {
+  return Boolean(address && HIDDEN_TOKEN_ADDRESSES.has(address.toLowerCase()));
+}
+
+export function isHiddenToken(token: {
+  address?: string | null;
+  symbol?: string | null;
+  name?: string | null;
+}): boolean {
+  if (isHiddenAddress(token.address)) return true;
+  const symbol = token.symbol?.trim().toLowerCase();
+  const name = token.name?.trim().toLowerCase();
+  return Boolean(
+    (symbol && HIDDEN_TICKERS.has(symbol)) || (name && HIDDEN_TICKERS.has(name))
+  );
 }
 
 /** Chain-wide DEX tokens (not launched through PumpRobin). */

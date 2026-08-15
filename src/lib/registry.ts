@@ -6,7 +6,7 @@ import {
   virtualTokensForSupply,
   virtualEthForSupply,
 } from "./curve";
-import { isHiddenToken } from "./data-client";
+import { isHiddenAddress, isHiddenToken } from "./data-client";
 import { getSupabaseAdmin, isSupabaseConfigured } from "./supabase/server";
 
 const DATA_DIR = path.join(process.cwd(), "data");
@@ -185,12 +185,12 @@ async function readSupabaseState(): Promise<PlatformState> {
 /* ─── Public API (same signatures as before) ─── */
 
 function withoutHiddenTokens(state: PlatformState): PlatformState {
-  const tokens = state.tokens.filter((t) => !isHiddenToken(t.address));
+  const tokens = state.tokens.filter((t) => !isHiddenToken(t));
   const hidden = new Set(
-    state.tokens.filter((t) => isHiddenToken(t.address)).map((t) => t.address.toLowerCase())
+    state.tokens.filter((t) => isHiddenToken(t)).map((t) => t.address.toLowerCase())
   );
   const trades = state.trades.filter(
-    (t) => !isHiddenToken(t.tokenAddress) && !hidden.has(t.tokenAddress.toLowerCase())
+    (t) => !isHiddenAddress(t.tokenAddress) && !hidden.has(t.tokenAddress.toLowerCase())
   );
   return { ...state, tokens, trades };
 }

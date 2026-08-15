@@ -31,7 +31,7 @@ export async function GET(request: Request) {
     const seen = new Set<string>();
     const tokens = [...local, ...market].filter((t) => {
       const key = t.address.toLowerCase();
-      if (isHiddenToken(key) || seen.has(key)) return false;
+      if (isHiddenToken(t) || seen.has(key)) return false;
       seen.add(key);
       return true;
     });

@@ -37,7 +37,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
 
   setFromApi: ({ tokens, trades, stats }) => {
     set({
-      tokens: tokens.filter((t) => !isHiddenToken(t.address)).map(revivetoken),
+      tokens: tokens.filter((t) => !isHiddenToken(t)).map(revivetoken),
       trades: (trades ?? get().trades).map((t) =>
         t.timestamp instanceof Date ? t : deserializeTrade(t as never)
       ),
@@ -68,7 +68,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
 
   addToken: (token) =>
     set((state) => {
-      if (isHiddenToken(token.address)) return state;
+      if (isHiddenToken(token)) return state;
       const tokens = [revivetoken(token), ...state.tokens];
       return {
         tokens,
@@ -81,9 +81,9 @@ export const useAppStore = create<AppStore>((set, get) => ({
 
   upsertToken: (token) =>
     set((state) => {
-      if (isHiddenToken(token.address)) {
+      if (isHiddenToken(token)) {
         return {
-          tokens: state.tokens.filter((t) => !isHiddenToken(t.address)),
+          tokens: state.tokens.filter((t) => !isHiddenToken(t)),
         };
       }
       const revived = revivetoken(token);
