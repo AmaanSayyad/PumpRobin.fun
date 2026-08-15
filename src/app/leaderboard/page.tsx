@@ -3,12 +3,13 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useAppStore } from "@/lib/store";
+import { isPumpRobinLaunch } from "@/lib/data-client";
 import { getLeaderboard } from "@/lib/data";
 import { formatEth } from "@/lib/utils";
 
 export default function LeaderboardPage() {
   const { tokens, hydrated } = useAppStore();
-  const leaderboard = getLeaderboard(tokens);
+  const leaderboard = getLeaderboard(tokens.filter(isPumpRobinLaunch));
 
   return (
     <div className="rh-container py-12 sm:py-16 max-w-3xl">

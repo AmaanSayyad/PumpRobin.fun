@@ -1,35 +1,75 @@
 "use client";
 
-import { useMemo, useState, type ReactNode } from "react";
+import { Suspense, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useSearchParams } from "next/navigation";
 import {
   BarChart3,
   Eye,
   Flame,
+  Rocket,
   Sparkles,
   TrendingUp,
   Zap,
 } from "lucide-react";
-import { TokenCard } from "@/components/tokens/token-card";
+import { MarketTable } from "@/components/tokens/market-table";
 import { useAppStore } from "@/lib/store";
-import { isTokenFeatured } from "@/lib/data-client";
+import { hasExploreTxns, hasTokenLogo, isPumpRobinLaunch, isTokenFeatured } from "@/lib/data-client";
 import { cn } from "@/lib/utils";
+import type { TokenData } from "@/lib/data-types";
 
 type ViewTab =
+  | "trending"
+  | "volume"
+  | "gainers"
+  | "new"
+  | "pump"
   | "featured"
   | "graduated"
-  | "bonding"
-  | "trending"
-  | "movers"
-  | "new"
-  | "volume";
+  | "bonding";
 
 const TABS: {
   id: ViewTab;
   label: string;
   description: string;
   icon: ReactNode;
+  market?: boolean;
   showCount?: boolean;
 }[] = [
+  {
+    id: "volume",
+    label: "Top Volume",
+    description: "Highest 24h volume across Uniswap and other DEXes",
+    icon: <BarChart3 className="w-3.5 h-3.5" strokeWidth={2.25} />,
+    market: true,
+  },
+  {
+    id: "trending",
+    label: "Trending",
+    description: "Hottest Robinhood Chain pairs right now",
+    icon: <Flame className="w-3.5 h-3.5" strokeWidth={2.25} />,
+    market: true,
+  },
+  {
+    id: "gainers",
+    label: "Gainers",
+    description: "Biggest 24h price moves",
+    icon: <Zap className="w-3.5 h-3.5" strokeWidth={2.25} />,
+    market: true,
+  },
+  {
+    id: "new",
+    label: "New Pairs",
+    description: "Recently created liquidity pools",
+    icon: <Sparkles className="w-3.5 h-3.5" strokeWidth={2.25} />,
+    market: true,
+  },
+  {
+    id: "pump",
+    label: "PumpRobin",
+    description: "Tokens launched on PumpRobin",
+    icon: <Rocket className="w-3.5 h-3.5" strokeWidth={2.25} />,
+    showCount: true,
+  },
   {
     id: "featured",
     label: "Featured",
@@ -40,7 +80,7 @@ const TABS: {
   {
     id: "graduated",
     label: "Graduated",
-    description: "Fully bonded — ready for DEX liquidity",
+    description: "PumpRobin launches live on Uniswap",
     icon: <Eye className="w-3.5 h-3.5" strokeWidth={2.25} />,
     showCount: true,
   },
@@ -51,52 +91,107 @@ const TABS: {
     icon: <TrendingUp className="w-3.5 h-3.5" strokeWidth={2.25} />,
     showCount: true,
   },
-  {
-    id: "trending",
-    label: "Trending",
-    description: "Hottest tokens on Robinhood Chain right now",
-    icon: <Flame className="w-3.5 h-3.5" strokeWidth={2.25} />,
-  },
-  {
-    id: "movers",
-    label: "Top Movers",
-    description: "Biggest 24h price swings",
-    icon: <Zap className="w-3.5 h-3.5" strokeWidth={2.25} />,
-  },
-  {
-    id: "new",
-    label: "New",
-    description: "Recently launched coins",
-    icon: <Sparkles className="w-3.5 h-3.5" strokeWidth={2.25} />,
-  },
-  {
-    id: "volume",
-    label: "Volume",
-    description: "Highest 24h trading volume",
-    icon: <BarChart3 className="w-3.5 h-3.5" strokeWidth={2.25} />,
-  },
 ];
 
-export default function ExplorePage() {
-  const { tokens, hydrated } = useAppStore();
-  const [search, setSearch] = useState("");
-  const [tab, setTab] = useState<ViewTab>("graduated");
+function revive(t: TokenData): TokenData {
+  return {
+    ...t,
+    createdAt: t.createdAt instanceof Date ? t.createdAt : new Date(t.createdAt),
+  };
+}
 
-  const counts = useMemo(
-    () => ({
-      featured: tokens.filter((t) => isTokenFeatured(t.metadata)).length,
-      graduated: tokens.filter((t) => t.graduated).length,
-      bonding: tokens.filter((t) => !t.graduated).length,
-    }),
+export default function ExplorePage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="mx-auto w-full max-w-[88rem] px-4 py-10 text-sm text-rh-muted">
+          Loading markets…
+        </div>
+      }
+    >
+      <ExploreInner />
+    </Suspense>
+  );
+}
+
+function ExploreInner() {
+  const searchParams = useSearchParams();
+  const initialQ = searchParams.get("q") ?? "";
+  const { tokens, hydrated } = useAppStore();
+  const [search, setSearch] = useState(initialQ);
+  const [tab, setTab] = useState<ViewTab>("volume");
+  const [market, setMarket] = useState<TokenData[]>([]);
+  const [marketLoading, setMarketLoading] = useState(true);
+  const [searchHits, setSearchHits] = useState<TokenData[] | null>(null);
+  const [searching, setSearching] = useState(false);
+
+  const launches = useMemo(
+    () => tokens.filter(isPumpRobinLaunch),
     [tokens]
   );
+  const listed = useMemo(() => launches.filter(hasTokenLogo), [launches]);
+  const counts = useMemo(
+    () => ({
+      pump: listed.length,
+      featured: listed.filter((t) => isTokenFeatured(t.metadata)).length,
+      graduated: listed.filter((t) => t.graduated).length,
+      bonding: listed.filter((t) => !t.graduated).length,
+    }),
+    [listed]
+  );
 
-  const active = TABS.find((t) => t.id === tab) ?? TABS[1];
+  const active = TABS.find((t) => t.id === tab) ?? TABS[0];
+  const isMarketTab = Boolean(active.market);
 
-  const filtered = useMemo(() => {
-    let result = [...tokens];
+  useEffect(() => {
+    if (!isMarketTab) return;
+    let cancelled = false;
+    setMarketLoading(true);
+    void (async () => {
+      try {
+        const res = await fetch(`/api/market?tab=${tab}`);
+        const data = await res.json();
+        if (!cancelled) {
+          setMarket(((data.tokens ?? []) as TokenData[]).map(revive));
+        }
+      } catch {
+        if (!cancelled) setMarket([]);
+      } finally {
+        if (!cancelled) setMarketLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [tab, isMarketTab]);
 
-    if (search.trim()) {
+  useEffect(() => {
+    const q = search.trim();
+    if (!q) {
+      setSearchHits(null);
+      setSearching(false);
+      return;
+    }
+    setSearching(true);
+    const handle = window.setTimeout(() => {
+      void (async () => {
+        try {
+          const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`);
+          const data = await res.json();
+          setSearchHits(((data.tokens ?? []) as TokenData[]).map(revive));
+        } catch {
+          setSearchHits([]);
+        } finally {
+          setSearching(false);
+        }
+      })();
+    }, 280);
+    return () => window.clearTimeout(handle);
+  }, [search]);
+
+  const pumpFiltered = useMemo(() => {
+    let result = [...launches];
+    if (search.trim() && !searchHits) {
       const q = search.toLowerCase();
       result = result.filter(
         (t) =>
@@ -105,107 +200,68 @@ export default function ExplorePage() {
           t.address.toLowerCase().includes(q)
       );
     }
-
     switch (tab) {
       case "featured":
         result = result.filter((t) => isTokenFeatured(t.metadata));
-        result.sort(
-          (a, b) =>
-            new Date(b.metadata?.featuredUntil || 0).getTime() -
-            new Date(a.metadata?.featuredUntil || 0).getTime()
-        );
         break;
       case "graduated":
         result = result.filter((t) => t.graduated);
-        result.sort((a, b) => {
-          const af = isTokenFeatured(a.metadata) ? 1 : 0;
-          const bf = isTokenFeatured(b.metadata) ? 1 : 0;
-          if (af !== bf) return bf - af;
-          return b.marketCap - a.marketCap;
-        });
+        result.sort((a, b) => b.marketCap - a.marketCap);
         break;
       case "bonding":
         result = result.filter((t) => !t.graduated);
-        result.sort((a, b) => {
-          const af = isTokenFeatured(a.metadata) ? 1 : 0;
-          const bf = isTokenFeatured(b.metadata) ? 1 : 0;
-          if (af !== bf) return bf - af;
-          return b.progress - a.progress || b.marketCap - a.marketCap;
-        });
+        result.sort((a, b) => b.progress - a.progress || b.marketCap - a.marketCap);
         break;
-      case "trending":
-        result.sort((a, b) => {
-          const af = isTokenFeatured(a.metadata) ? 1 : 0;
-          const bf = isTokenFeatured(b.metadata) ? 1 : 0;
-          if (af !== bf) return bf - af;
-          return (
-            b.volume24h * 2 +
-            Math.abs(b.priceChange24h) -
-            (a.volume24h * 2 + Math.abs(a.priceChange24h))
-          );
-        });
-        break;
-      case "movers":
-        result.sort((a, b) => {
-          const af = isTokenFeatured(a.metadata) ? 1 : 0;
-          const bf = isTokenFeatured(b.metadata) ? 1 : 0;
-          if (af !== bf) return bf - af;
-          return Math.abs(b.priceChange24h) - Math.abs(a.priceChange24h);
-        });
-        break;
-      case "new":
-        result.sort((a, b) => {
-          const af = isTokenFeatured(a.metadata) ? 1 : 0;
-          const bf = isTokenFeatured(b.metadata) ? 1 : 0;
-          if (af !== bf) return bf - af;
-          return b.createdAt.getTime() - a.createdAt.getTime();
-        });
-        break;
-      case "volume":
-        result.sort((a, b) => {
-          const af = isTokenFeatured(a.metadata) ? 1 : 0;
-          const bf = isTokenFeatured(b.metadata) ? 1 : 0;
-          if (af !== bf) return bf - af;
-          return b.volume24h - a.volume24h;
-        });
-        break;
+      default:
+        result.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
     }
-
     return result;
-  }, [tokens, search, tab]);
+  }, [launches, search, searchHits, tab]);
+
+  const browsing = isMarketTab ? market : pumpFiltered;
+  const displayed = search.trim()
+    ? (searchHits ?? browsing)
+    : browsing.filter((t) =>
+        isMarketTab ? hasTokenLogo(t) && hasExploreTxns(t) : hasTokenLogo(t)
+      );
+  const loading = search.trim()
+    ? searching
+    : isMarketTab
+      ? marketLoading
+      : !hydrated;
 
   const emptyCopy: Record<ViewTab, string> = {
+    trending: "No trending pairs yet.",
+    volume: "No volume yet.",
+    gainers: "No movers yet.",
+    new: "No new pairs yet.",
+    pump: "No PumpRobin launches yet.",
     featured: "No featured launches right now — boost yours at launch.",
     graduated: "No graduated tokens yet.",
     bonding: "No bonding-curve tokens yet.",
-    trending: "Nothing trending yet.",
-    movers: "No movers yet.",
-    new: "No new launches yet.",
-    volume: "No volume yet.",
   };
 
   return (
-    <div className="rh-container py-12 sm:py-16">
-      <h1 className="rh-display text-4xl sm:text-5xl mb-3">Explore</h1>
-      <p className="text-rh-muted mb-8 max-w-xl">
-        Explore all tokens — bonding-curve launches and graduated coins on
-        Robinhood Chain.
+    <div className="mx-auto w-full max-w-[88rem] px-4 py-5 sm:px-6 sm:py-10">
+      <h1 className="rh-display text-3xl sm:text-5xl mb-1 sm:mb-3">Explore</h1>
+      <p className="hidden sm:block text-rh-muted mb-8 max-w-2xl">
+        Search and trade any token on Robinhood Chain — PumpRobin launches plus
+        every indexed DEX pair.
       </p>
 
       <input
         type="search"
-        placeholder="Search name or symbol"
+        placeholder="Search name, ticker, or paste a contract address"
         value={search}
         onChange={(e) => setSearch(e.target.value)}
-        className="w-full max-w-md mb-6 px-5 py-3 bg-rh-raised border border-transparent rounded-full text-sm focus:outline-none focus:border-rh-lime/40 placeholder:text-rh-dim"
+        className="w-full max-w-xl mt-4 mb-4 sm:mt-0 sm:mb-6 px-4 py-2.5 sm:px-5 sm:py-3 bg-rh-raised border border-transparent rounded-full text-sm focus:outline-none focus:border-rh-lime/40 placeholder:text-rh-dim"
       />
 
-      {/* Segmented view options — robinlaunch-style */}
-      <div className="mb-3 overflow-x-auto -mx-1 px-1">
+      <div className="mb-2 overflow-x-auto no-scrollbar -mx-4 px-4 sm:mx-0 sm:px-0">
         <div
           role="tablist"
           aria-label="Token views"
-          className="inline-flex min-w-full sm:min-w-0 items-center gap-1 p-1.5 rounded-full bg-rh-raised border border-white/[0.06]"
+          className="inline-flex min-w-full sm:min-w-0 items-center gap-0.5 p-1 rounded-full bg-rh-raised border border-white/[0.06]"
         >
           {TABS.map((t) => {
             const selected = tab === t.id;
@@ -216,7 +272,9 @@ export default function ExplorePage() {
                   ? counts.graduated
                   : t.id === "bonding"
                     ? counts.bonding
-                    : undefined;
+                    : t.id === "pump"
+                      ? counts.pump
+                      : undefined;
 
             return (
               <button
@@ -226,20 +284,20 @@ export default function ExplorePage() {
                 aria-selected={selected}
                 onClick={() => setTab(t.id)}
                 className={cn(
-                  "inline-flex items-center gap-2 px-3.5 sm:px-4 py-2.5 rounded-full text-sm whitespace-nowrap transition-colors shrink-0",
+                  "inline-flex items-center gap-1.5 px-2.5 sm:px-3.5 py-1.5 sm:py-2 rounded-full text-xs sm:text-sm whitespace-nowrap transition-colors shrink-0",
                   selected
                     ? "bg-rh-lime text-rh-on-lime font-medium"
                     : "text-rh-muted hover:text-white"
                 )}
               >
-                <span className={selected ? "text-rh-on-lime" : "text-rh-dim"}>
+                <span className={cn("hidden sm:inline", selected ? "text-rh-on-lime" : "text-rh-dim")}>
                   {t.icon}
                 </span>
                 {t.label}
                 {t.showCount && typeof count === "number" && (
                   <span
                     className={cn(
-                      "min-w-[1.25rem] h-5 px-1.5 rounded-full text-[11px] font-semibold tabular-nums inline-flex items-center justify-center",
+                      "min-w-[1.1rem] h-4 px-1 rounded-full text-[10px] font-semibold tabular-nums inline-flex items-center justify-center",
                       selected
                         ? "bg-black/20 text-rh-on-lime"
                         : "bg-white/10 text-rh-muted"
@@ -254,41 +312,27 @@ export default function ExplorePage() {
         </div>
       </div>
 
-      <p className="text-sm text-rh-muted mb-8">{active.description}</p>
-
-      <div className="flex items-end justify-between gap-4 mb-5">
-        <div>
-          <h2 className="text-[11px] uppercase tracking-[0.14em] text-rh-dim font-medium">
-            {active.label}
-          </h2>
-          <p className="text-xs text-rh-muted mt-1 sm:hidden">{active.description}</p>
-        </div>
-        <p className="text-xs text-rh-dim tabular-nums shrink-0">
-          {hydrated ? `${filtered.length} tokens` : "Loading…"}
+      <div className="flex items-center justify-between gap-4 mb-2 sm:mb-3">
+        <p className="text-[11px] uppercase tracking-[0.14em] text-rh-dim font-medium truncate">
+          {search.trim() ? "Search" : active.label}
+        </p>
+        <p className="text-[11px] text-rh-dim tabular-nums shrink-0">
+          {loading ? "Loading…" : `${displayed.length} tokens`}
         </p>
       </div>
 
-      {filtered.length === 0 ? (
-        <div className="py-20 sm:py-24 rounded-2xl bg-rh-raised/60 border border-white/[0.04] text-center">
+      {displayed.length === 0 ? (
+        <div className="py-16 sm:py-24 rounded-2xl bg-rh-raised/60 border border-white/[0.04] text-center">
           <p className="text-rh-muted text-sm">
-            {hydrated ? emptyCopy[tab] : "Loading…"}
+            {loading
+              ? "Loading…"
+              : search.trim()
+                ? "No tokens matched. Try a ticker or contract address."
+                : emptyCopy[tab]}
           </p>
-          {hydrated && tab !== "bonding" && (
-            <button
-              type="button"
-              onClick={() => setTab("bonding")}
-              className="mt-4 text-sm text-rh-lime hover:underline"
-            >
-              View bonding curve
-            </button>
-          )}
         </div>
       ) : (
-        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
-          {filtered.map((token, i) => (
-            <TokenCard key={token.address} token={token} index={i} />
-          ))}
-        </div>
+        <MarketTable tokens={displayed} />
       )}
     </div>
   );

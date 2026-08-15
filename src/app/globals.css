@@ -97,6 +97,7 @@
 
 ::-webkit-scrollbar {
   width: 4px;
+  height: 4px;
 }
 ::-webkit-scrollbar-track {
   background: #000;
@@ -106,6 +107,14 @@
 }
 ::-webkit-scrollbar-thumb:hover {
   background: #ccff00;
+}
+
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
 }
 
 .glass {

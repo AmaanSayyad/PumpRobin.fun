@@ -6,6 +6,7 @@ import {
   virtualTokensForSupply,
   virtualEthForSupply,
 } from "./curve";
+import { isHiddenToken } from "./data-client";
 import { getSupabaseAdmin, isSupabaseConfigured } from "./supabase/server";
 
 const DATA_DIR = path.join(process.cwd(), "data");
@@ -183,16 +184,29 @@ async function readSupabaseState(): Promise<PlatformState> {
 
 /* ─── Public API (same signatures as before) ─── */
 
+function withoutHiddenTokens(state: PlatformState): PlatformState {
+  const tokens = state.tokens.filter((t) => !isHiddenToken(t.address));
+  const hidden = new Set(
+    state.tokens.filter((t) => isHiddenToken(t.address)).map((t) => t.address.toLowerCase())
+  );
+  const trades = state.trades.filter(
+    (t) => !isHiddenToken(t.tokenAddress) && !hidden.has(t.tokenAddress.toLowerCase())
+  );
+  return { ...state, tokens, trades };
+}
+
 export async function readPlatformState(): Promise<PlatformState> {
-  if (isSupabaseConfigured()) {
-    try {
-      return await readSupabaseState();
-    } catch (err) {
-      console.error("[registry] Supabase read failed, falling back to file:", err);
-      return readFileState();
-    }
-  }
-  return readFileState();
+  const state = isSupabaseConfigured()
+    ? await (async () => {
+        try {
+          return await readSupabaseState();
+        } catch (err) {
+          console.error("[registry] Supabase read failed, falling back to file:", err);
+          return readFileState();
+        }
+      })()
+    : await readFileState();
+  return withoutHiddenTokens(state);
 }
 
 export async function writePlatformState(state: PlatformState): Promise<void> {

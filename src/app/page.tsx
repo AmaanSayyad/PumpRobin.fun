@@ -7,7 +7,7 @@ import { RhButton } from "@/components/ui/rh-button";
 import { BrandMark } from "@/components/brand-mark";
 import { MediaFrame, SplitBlock } from "@/components/ui/media-frame";
 import { useAppStore } from "@/lib/store";
-import { formatEth } from "@/lib/utils";
+import { formatCount, formatUsd } from "@/lib/utils";
 
 const FEATURES = [
   {
@@ -260,11 +260,14 @@ export default function HomePage() {
       <section className="py-16">
         <div className="rh-container grid grid-cols-2 md:grid-cols-5 gap-8 text-center">
           {[
-            { label: "Tokens launched", value: String(stats.totalTokens) },
-            { label: "Total transactions", value: String(stats.totalTrades) },
-            { label: "24h volume", value: `${formatEth(stats.volume24h)} ETH` },
-            { label: "Traders (24h)", value: String(stats.activeTraders) },
-            { label: "Graduated", value: String(stats.graduatedTokens) },
+            { label: "Tokens launched", value: formatCount(stats.totalTokens) },
+            { label: "Total transactions", value: formatCount(stats.totalTrades) },
+            {
+              label: "24h volume",
+              value: formatUsd(stats.volume24hUsd ?? 0),
+            },
+            { label: "Traders (24h)", value: formatCount(stats.activeTraders) },
+            { label: "Graduated", value: formatCount(stats.graduatedTokens) },
           ].map((s) => (
             <div key={s.label}>
               <p className="rh-display text-3xl sm:text-4xl mb-2">{s.value}</p>

@@ -2,7 +2,7 @@
 
 import { create } from "zustand";
 import type { TokenData, PlatformStats, TradeData } from "./data-types";
-import { EMPTY_STATS, deserializeTrade } from "./data-client";
+import { EMPTY_STATS, deserializeTrade, isHiddenToken } from "./data-client";
 
 interface AppStore {
   tokens: TokenData[];
@@ -37,7 +37,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
 
   setFromApi: ({ tokens, trades, stats }) => {
     set({
-      tokens: tokens.map(revivetoken),
+      tokens: tokens.filter((t) => !isHiddenToken(t.address)).map(revivetoken),
       trades: (trades ?? get().trades).map((t) =>
         t.timestamp instanceof Date ? t : deserializeTrade(t as never)
       ),
@@ -68,6 +68,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
 
   addToken: (token) =>
     set((state) => {
+      if (isHiddenToken(token.address)) return state;
       const tokens = [revivetoken(token), ...state.tokens];
       return {
         tokens,
@@ -80,6 +81,11 @@ export const useAppStore = create<AppStore>((set, get) => ({
 
   upsertToken: (token) =>
     set((state) => {
+      if (isHiddenToken(token.address)) {
+        return {
+          tokens: state.tokens.filter((t) => !isHiddenToken(t.address)),
+        };
+      }
       const revived = revivetoken(token);
       const exists = state.tokens.findIndex(
         (t) => t.address.toLowerCase() === revived.address.toLowerCase()

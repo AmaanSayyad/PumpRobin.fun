@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";
 import { RhButton } from "@/components/ui/rh-button";
 import { BrandMark } from "@/components/brand-mark";
 import { WalletButton } from "@/components/wallet-button";
+import { GlobalSearch } from "@/components/global-search";
 
 const NAV = [
   { href: "/explore", label: "Explore" },
@@ -32,9 +33,13 @@ export function Navbar() {
       <div className="rh-container flex h-16 items-center justify-between gap-2 sm:gap-4">
         <BrandMark
           size={28}
-          className="min-w-0"
+          className="min-w-0 shrink-0"
           textClassName="hidden text-[15px] text-white min-[420px]:inline"
         />
+
+        <div className="flex min-w-0 flex-1 justify-center px-1 sm:px-2">
+          <GlobalSearch />
+        </div>
 
         <div className="flex shrink-0 items-center gap-1.5 sm:gap-3">
           <WalletButton className="max-w-[10.5rem] sm:max-w-none" />

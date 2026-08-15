@@ -307,7 +307,7 @@ export async function fetchTokenHoldersCount(
   }
 }
 
-/** Top holders from Blockscout — accurate for graduated (Uniswap) tokens. */
+/** Top holders from Blockscout — works for any ERC-20, including market tokens. */
 export async function fetchTokenTopHolders(
   token: string,
   limit: number,
@@ -318,20 +318,42 @@ export async function fetchTokenTopHolders(
     uniswapPool?: string | null;
   }
 ): Promise<OnChainHolderRow[]> {
-  const supply = ctx.supply > 0 ? ctx.supply : 1_000_000_000;
   const creator = ctx.creator?.toLowerCase();
   const curve = ctx.bondingCurve?.toLowerCase();
   const pool = ctx.uniswapPool?.toLowerCase();
   const dead = DEAD_ADDRESS;
 
   try {
-    const res = await fetch(
-      `${BLOCKSCOUT}/tokens/${token}/holders?items_count=${Math.min(limit + 5, 50)}`,
-      { cache: "no-store" }
-    );
-    if (!res.ok) return [];
+    const [metaRes, holdRes] = await Promise.all([
+      fetch(`${BLOCKSCOUT}/tokens/${token}`, {
+        next: { revalidate: 60 },
+        headers: { accept: "application/json" },
+      }),
+      fetch(
+        `${BLOCKSCOUT}/tokens/${token}/holders?items_count=${Math.min(limit + 5, 50)}`,
+        {
+          next: { revalidate: 30 },
+          headers: { accept: "application/json" },
+        }
+      ),
+    ]);
+    if (!holdRes.ok) return [];
 
-    const data = (await res.json()) as {
+    const meta = metaRes.ok
+      ? ((await metaRes.json()) as {
+          decimals?: string | number;
+          total_supply?: string;
+        })
+      : null;
+    const decimals = Number(meta?.decimals ?? 18) || 18;
+    const chainSupply =
+      meta?.total_supply != null
+        ? Number(meta.total_supply) / 10 ** decimals
+        : 0;
+    const supply =
+      ctx.supply > 0 ? ctx.supply : chainSupply > 0 ? chainSupply : 1_000_000_000;
+
+    const data = (await holdRes.json()) as {
       items?: Array<{
         address?: { hash?: string; is_contract?: boolean };
         value?: string;
@@ -344,7 +366,7 @@ export async function fetchTokenTopHolders(
       const raw = item.value;
       if (!address || !raw) continue;
 
-      const balance = Number(raw) / 1e18;
+      const balance = Number(raw) / 10 ** decimals;
       if (!Number.isFinite(balance) || balance <= 1e-6) continue;
 
       const addr = address;
@@ -362,7 +384,7 @@ export async function fetchTokenTopHolders(
       rows.push({
         address: addr,
         balance,
-        pct: (balance / supply) * 100,
+        pct: supply > 0 ? (balance / supply) * 100 : 0,
         label,
         isBurned,
         isLp,

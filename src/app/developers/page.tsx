@@ -58,7 +58,7 @@ const ENDPOINTS = [
     method: "GET",
     path: "/api/platform/stats",
     title: "Platform stats",
-    body: "Aggregate volume, launches, traders, fees, and graduations.",
+    body: "Robinhood Chain-wide volume, launches, traders, and graduations.",
     response: `{ /* PlatformStats */ }`,
   },
   {

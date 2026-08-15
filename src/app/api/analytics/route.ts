@@ -2,14 +2,14 @@ import { NextResponse } from "next/server";
 import {
   dailyVolumeSeries,
   enrichToken,
-  getPlatformStats,
   weeklyGraduations,
 } from "@/lib/data";
+import { getEcosystemStats } from "@/lib/ecosystem";
 import { readPlatformState } from "@/lib/registry";
 
 export async function GET() {
   const state = await readPlatformState();
-  const stats = getPlatformStats(state.tokens, state.trades);
+  const stats = await getEcosystemStats();
   const tokens = state.tokens.map((t) => enrichToken(t, state.trades));
 
   const statusCounts = {

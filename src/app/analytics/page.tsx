@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Image from "next/image";
 import { useAppStore } from "@/lib/store";
-import { formatEth, formatNumber } from "@/lib/utils";
+import { formatCount, formatEth, formatUsd } from "@/lib/utils";
 import { MediaFrame, SplitBlock } from "@/components/ui/media-frame";
 import {
   BarChart,
@@ -25,6 +25,8 @@ interface AnalyticsPayload {
     totalTokens: number;
     activeTraders: number;
     graduatedTokens: number;
+    volume24hUsd?: number;
+    totalVolumeUsd?: number;
   };
   volumeSeries: Array<{ day: string; volume: number; tokens: number }>;
   graduationSeries: Array<{ day: string; graduated: number }>;
@@ -89,8 +91,13 @@ export default function AnalyticsPage() {
       <div className="rh-container py-12 sm:py-16">
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-px bg-rh-raised mb-10">
           {[
-            { label: "Total volume", value: `${formatEth(stats.totalVolume)} ETH` },
-            { label: "Trades", value: formatNumber(stats.totalTrades, 0) },
+            {
+              label: "Total volume",
+              value: stats.totalVolumeUsd
+                ? formatUsd(stats.totalVolumeUsd)
+                : `${formatEth(stats.totalVolume)} ETH`,
+            },
+            { label: "Trades", value: formatCount(stats.totalTrades) },
             { label: "Fees", value: `${formatEth(stats.feesCollected)} ETH` },
             {
               label: "Avg graduation",
@@ -187,8 +194,8 @@ export default function AnalyticsPage() {
 
         <div className="grid sm:grid-cols-3 gap-px bg-rh-raised mb-16">
           {[
-            { label: "Tokens launched", value: String(stats.totalTokens) },
-            { label: "Active traders 24h", value: String(stats.activeTraders) },
+            { label: "Tokens launched", value: formatCount(stats.totalTokens) },
+            { label: "Active traders 24h", value: formatCount(stats.activeTraders) },
             { label: "Graduation rate", value: `${gradRate.toFixed(1)}%` },
           ].map((m) => (
             <div key={m.label} className="bg-black p-6 text-center">

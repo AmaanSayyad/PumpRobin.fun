@@ -60,6 +60,7 @@ import {
   ExternalLink,
   Globe,
 } from "lucide-react";
+import type { TradeData } from "@/lib/data-types";
 import { CreatorIcon } from "@/components/creator-icon";
 
 const BUY_WALLET_PCTS = [25, 50, 75, 100] as const;
@@ -110,18 +111,7 @@ export default function TokenPage({
   const token = tokens.find(
     (t) => t.address.toLowerCase() === address.toLowerCase()
   );
-  const tokenTrades = useMemo(
-    () =>
-      trades
-        .filter(
-          (t) => t.tokenAddress.toLowerCase() === address.toLowerCase()
-        )
-        .sort(
-          (a, b) =>
-            new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
-        ),
-    [trades, address]
-  );
+  const [lookupFailed, setLookupFailed] = useState(false);
 
   const [tradeMode, setTradeMode] = useState<"buy" | "sell">("buy");
   const [amount, setAmount] = useState("");
@@ -131,6 +121,9 @@ export default function TokenPage({
   const [quoteGasUsd, setQuoteGasUsd] = useState<string | null>(null);
   const [copied, setCopied] = useState<"ca" | "curve" | null>(null);
   const [chainHolders, setChainHolders] = useState<HolderRow[] | null>(null);
+  const [liveTrades, setLiveTrades] = useState<TradeData[]>([]);
+  const [holderCount, setHolderCount] = useState<number | null>(null);
+  const [activityLoading, setActivityLoading] = useState(true);
   const [usesFeeRouter, setUsesFeeRouter] = useState(false);
   const [hasTransferTax, setHasTransferTax] = useState(false);
   const [pendingFees, setPendingFees] = useState<PendingFees | null>(null);
@@ -173,7 +166,8 @@ export default function TokenPage({
       setError("Connect a wallet that holds this token to use % presets");
       return;
     }
-    const bal = Number(formatUnits(tokenBalRaw as bigint, 18));
+    const decimals = token?.metadata?.decimals ?? 18;
+    const bal = Number(formatUnits(tokenBalRaw as bigint, decimals));
     if (!(bal > 0)) {
       setError("No token balance");
       return;
@@ -184,9 +178,38 @@ export default function TokenPage({
     setError("");
   };
 
+  useEffect(() => {
+    if (!address || token) return;
+    let cancelled = false;
+    setLookupFailed(false);
+    void (async () => {
+      try {
+        const res = await fetch(`/api/tokens/${address}`);
+        if (!res.ok) {
+          if (!cancelled) setLookupFailed(true);
+          return;
+        }
+        const data = await res.json();
+        if (cancelled || !data.token) {
+          if (!cancelled) setLookupFailed(true);
+          return;
+        }
+        upsertToken({
+          ...data.token,
+          createdAt: new Date(data.token.createdAt),
+        });
+      } catch {
+        if (!cancelled) setLookupFailed(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [address, token, upsertToken]);
+
   // Refresh live pool/curve stats + index Uniswap swaps into recent trades
   useEffect(() => {
-    if (!address) return;
+    if (!address || token?.source === "market") return;
     let cancelled = false;
     void (async () => {
       try {
@@ -213,12 +236,34 @@ export default function TokenPage({
     };
   }, [address, upsertToken, refreshTokens]);
 
-  const topHolders = useMemo(() => {
-    if (token?.graduated && chainHolders && chainHolders.length > 0) {
-      return chainHolders;
+  const tokenTrades = useMemo(() => {
+    const fromStore = trades
+      .filter((t) => t.tokenAddress.toLowerCase() === address.toLowerCase())
+      .map((t) => ({
+        ...t,
+        timestamp:
+          t.timestamp instanceof Date ? t.timestamp : new Date(t.timestamp),
+      }));
+    const extra = liveTrades.map((t) => ({
+      ...t,
+      timestamp:
+        t.timestamp instanceof Date ? t.timestamp : new Date(t.timestamp),
+    }));
+    const seen = new Set<string>();
+    const merged: TradeData[] = [];
+    for (const t of [...extra, ...fromStore]) {
+      const key = t.id || `${t.trader}-${t.timestamp.valueOf()}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      merged.push(t);
     }
+    return merged.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
+  }, [trades, liveTrades, address]);
+
+  const topHolders = useMemo(() => {
+    if (chainHolders && chainHolders.length > 0) return chainHolders;
     if (!token) return [];
-    if (token.graduated) return chainHolders ?? [];
+    if (token.source === "market" || token.graduated) return [];
     return buildTopHolders({
       trades: tokenTrades,
       tokenAddress: token.address,
@@ -231,27 +276,39 @@ export default function TokenPage({
   }, [token, tokenTrades, chainHolders]);
 
   useEffect(() => {
-    if (!token?.graduated) {
-      setChainHolders(null);
-      return;
-    }
+    if (!address) return;
     let cancelled = false;
+    setActivityLoading(true);
     void (async () => {
       try {
-        const res = await fetch(`/api/tokens/${token.address}/holders`);
+        const res = await fetch(`/api/tokens/${address}/activity`);
         if (!res.ok || cancelled) return;
-        const data = (await res.json()) as { holders?: HolderRow[] };
-        if (!cancelled && data.holders?.length) {
-          setChainHolders(data.holders);
+        const data = (await res.json()) as {
+          holders?: HolderRow[];
+          holderCount?: number | null;
+          trades?: TradeData[];
+        };
+        if (cancelled) return;
+        if (data.holders?.length) setChainHolders(data.holders);
+        if (typeof data.holderCount === "number") setHolderCount(data.holderCount);
+        if (data.trades?.length) {
+          setLiveTrades(
+            data.trades.map((t) => ({
+              ...t,
+              timestamp: new Date(t.timestamp),
+            }))
+          );
         }
       } catch {
         /* best-effort */
+      } finally {
+        if (!cancelled) setActivityLoading(false);
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [token?.address, token?.graduated]);
+  }, [address]);
 
   useEffect(() => {
     if (!token?.bondingCurve) {
@@ -348,6 +405,7 @@ export default function TokenPage({
             tokenAddress: token.address as Address,
             isBuy: tradeMode === "buy",
             amount,
+            tokenDecimals: token.metadata?.decimals ?? 18,
           });
           if (cancelled) return;
           let out = q.amountOutFormatted;
@@ -378,6 +436,7 @@ export default function TokenPage({
     tradeMode,
     hasTransferTax,
     token?.bondingCurve,
+    token?.metadata?.decimals,
     token?.metadata?.pooledWeth,
     token?.metadata?.pooledToken,
   ]);
@@ -404,13 +463,10 @@ export default function TokenPage({
     setError("");
     try {
       if (token.graduated) {
-        if (hasTransferTax) {
-          if (tradeMode === "buy" && !token.bondingCurve) {
-            throw new Error("Bonding curve missing — refresh and try again");
-          }
+        if (hasTransferTax && token.bondingCurve) {
           const result = await executeGraduatedCurveTrade({
             config: wagmiConfig,
-            curve: (token.bondingCurve || token.address) as Address,
+            curve: token.bondingCurve as Address,
             token: token.address as Address,
             trader,
             isBuy: tradeMode === "buy",
@@ -443,6 +499,7 @@ export default function TokenPage({
           tokenAddress: token.address as Address,
           isBuy: tradeMode === "buy",
           amount,
+          tokenDecimals: token.metadata?.decimals ?? 18,
         });
         setAmount("");
         setQuoteOut(null);
@@ -518,13 +575,17 @@ export default function TokenPage({
   if (!token) {
     return (
       <div className="rh-container py-24 text-center">
-        <p className="rh-display text-3xl mb-4">Token not found</p>
+        <p className="rh-display text-3xl mb-4">
+          {lookupFailed ? "Token not found" : "Loading token…"}
+        </p>
         <Link href="/explore" className="text-rh-lime text-sm hover:underline">
           Back to Explore
         </Link>
       </div>
     );
   }
+
+  const isDexToken = token.source === "market" || !token.bondingCurve;
 
   const poolFromMeta = token.metadata?.uniswapPool || null;
   const supply = token.metadata?.supply ?? DEFAULT_SUPPLY;
@@ -672,14 +733,16 @@ export default function TokenPage({
               >
                 Source
               </a>
-              <Link
-                href={`/wallet/${token.creator}`}
-                title="Creator"
-                aria-label="Creator profile"
-                className="rounded-md p-1.5 text-rh-muted hover:bg-white/5 hover:text-rh-lime"
-              >
-                <CreatorIcon />
-              </Link>
+              {!isDexToken && (
+                <Link
+                  href={`/wallet/${token.creator}`}
+                  title="Creator"
+                  aria-label="Creator profile"
+                  className="rounded-md p-1.5 text-rh-muted hover:bg-white/5 hover:text-rh-lime"
+                >
+                  <CreatorIcon />
+                </Link>
+              )}
             </div>
           </div>
 
@@ -743,31 +806,48 @@ export default function TokenPage({
           <div className="grid grid-cols-2 gap-px bg-rh-raised sm:grid-cols-3 lg:grid-cols-5">
             {[
               {
-                label: mostlyBurned ? "Market cap" : "Market cap (FDV)",
-                value: `${formatEth(token.marketCap)} ETH`,
-                hint: mostlyBurned
-                  ? `Circulating · FDV ${formatEth(token.marketCapFdv)} ETH · ~${formatUsd(ethToUsd(token.marketCap, ethUsd))}`
-                  : `~${formatUsd(ethToUsd(token.marketCap, ethUsd))}`,
+                label: isDexToken ? "Market cap" : mostlyBurned ? "Market cap" : "Market cap (FDV)",
+                value: isDexToken && token.metadata?.marketCapUsd
+                  ? formatUsd(token.metadata.marketCapUsd)
+                  : `${formatEth(token.marketCap)} ETH`,
+                hint: isDexToken && token.metadata?.priceUsd
+                  ? `${formatUsd(token.metadata.priceUsd)} / token`
+                  : mostlyBurned
+                    ? `Circulating · FDV ${formatEth(token.marketCapFdv)} ETH · ~${formatUsd(ethToUsd(token.marketCap, ethUsd))}`
+                    : `~${formatUsd(ethToUsd(token.marketCap, ethUsd))}`,
               },
               {
-                label: "ATH market cap",
-                value: `${formatEth(token.athMarketCap)} ETH`,
-                hint: `~${formatUsd(ethToUsd(token.athMarketCap, ethUsd))}`,
+                label: isDexToken ? "24h volume" : "ATH market cap",
+                value: isDexToken && token.metadata?.volumeUsd24h
+                  ? formatUsd(token.metadata.volumeUsd24h)
+                  : `${formatEth(isDexToken ? token.volume24h : token.athMarketCap)} ETH`,
+                hint: isDexToken
+                  ? `${token.metadata?.txns24h ?? 0} txns`
+                  : `~${formatUsd(ethToUsd(token.athMarketCap, ethUsd))}`,
               },
               {
-                label: "24h volume",
-                value: `${formatEth(token.volume24h)} ETH`,
-                hint: `~${formatUsd(ethToUsd(token.volume24h, ethUsd))}`,
+                label: isDexToken ? "24h change" : "24h volume",
+                value: isDexToken
+                  ? `${token.priceChange24h >= 0 ? "+" : ""}${token.priceChange24h.toFixed(1)}%`
+                  : `${formatEth(token.volume24h)} ETH`,
+                hint: isDexToken
+                  ? "Price change"
+                  : `~${formatUsd(ethToUsd(token.volume24h, ethUsd))}`,
               },
               {
                 label: "Holders",
-                value: String(token.holders),
+                value:
+                  holderCount != null
+                    ? holderCount.toLocaleString("en-US")
+                    : String(token.holders || "—"),
                 hint: "Wallets with balance",
               },
               token.graduated
                 ? {
                     label: "Liquidity",
-                    value: `${formatEth(token.ethReserves)} ETH`,
+                    value: token.metadata?.liquidityUsd
+                      ? formatUsd(token.metadata.liquidityUsd)
+                      : `${formatEth(token.ethReserves)} ETH`,
                     hint: token.metadata?.pooledWeth != null
                       ? `${formatEth(token.metadata.pooledWeth)} WETH · ~${formatUsd(ethToUsd(token.ethReserves, ethUsd))}`
                       : `~${formatUsd(ethToUsd(token.ethReserves, ethUsd))}`,
@@ -788,6 +868,34 @@ export default function TokenPage({
             ))}
           </div>
 
+          <div className="flex flex-wrap gap-x-4 gap-y-1 px-1 text-[11px] text-rh-dim">
+            <span>Created {timeAgo(token.createdAt)}</span>
+            {token.metadata?.dexId && (
+              <span className="uppercase">
+                {token.metadata.dexId.replace(/-robinhood$/i, "")}
+              </span>
+            )}
+            {typeof token.metadata?.traders24h === "number" &&
+              token.metadata.traders24h > 0 && (
+                <span>{token.metadata.traders24h.toLocaleString("en-US")} traders / 24h</span>
+              )}
+            {typeof token.metadata?.priceChange1h === "number" &&
+              token.metadata.priceChange1h !== 0 && (
+                <span>
+                  1h {token.metadata.priceChange1h >= 0 ? "+" : ""}
+                  {token.metadata.priceChange1h.toFixed(1)}%
+                </span>
+              )}
+            {typeof token.metadata?.priceChange5m === "number" &&
+              token.metadata.priceChange5m !== 0 && (
+                <span>
+                  5m {token.metadata.priceChange5m >= 0 ? "+" : ""}
+                  {token.metadata.priceChange5m.toFixed(1)}%
+                </span>
+              )}
+          </div>
+
+          {!isDexToken && (
           <div className="border border-rh-raised p-5">
             <ProgressBar value={token.progress} graduated={token.graduated} />
             <p className="mt-2 text-xs text-rh-dim">
@@ -796,23 +904,33 @@ export default function TokenPage({
                 : `${formatEth(CHAIN_CONFIG.graduationThreshold - token.ethReserves)} ETH until graduation`}
             </p>
           </div>
+          )}
 
-          <div className="border border-rh-raised p-5">
-            <h3 className="mb-4 font-medium">Recent trades</h3>
+          <div className="border border-rh-raised p-4 sm:p-5">
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <h3 className="font-medium">Recent trades</h3>
+              <span className="text-[11px] text-rh-dim tabular-nums">
+                {activityLoading && tokenTrades.length === 0
+                  ? "Loading…"
+                  : `${Math.min(tokenTrades.length, 20)} shown`}
+              </span>
+            </div>
             {tokenTrades.length === 0 ? (
-              <p className="text-sm text-rh-dim">No trades yet.</p>
+              <p className="text-sm text-rh-dim">
+                {activityLoading ? "Loading trades…" : "No trades yet."}
+              </p>
             ) : (
-              <div className="max-h-72 space-y-2 overflow-y-auto">
-                {tokenTrades.map((trade) => (
+              <div className="max-h-72 space-y-0 overflow-y-auto">
+                {tokenTrades.slice(0, 20).map((trade) => (
                   <div
                     key={trade.id}
-                    className="flex items-center justify-between border-b border-rh-raised/50 py-2 text-sm last:border-0"
+                    className="flex h-10 items-center justify-between border-b border-rh-raised/50 text-sm last:border-0"
                   >
-                    <div className="flex items-center gap-2">
+                    <div className="flex min-w-0 items-center gap-2">
                       {trade.isBuy ? (
-                        <ArrowUpRight className="h-4 w-4 text-rh-lime" />
+                        <ArrowUpRight className="h-3.5 w-3.5 shrink-0 text-rh-lime" />
                       ) : (
-                        <ArrowDownRight className="h-4 w-4 text-red-400" />
+                        <ArrowDownRight className="h-3.5 w-3.5 shrink-0 text-red-400" />
                       )}
                       <span
                         className={
@@ -821,13 +939,17 @@ export default function TokenPage({
                       >
                         {trade.isBuy ? "Buy" : "Sell"}
                       </span>
-                      <span className="font-mono text-rh-dim">
+                      <span className="font-mono text-xs text-rh-dim">
                         {shortenAddress(trade.trader)}
                       </span>
                     </div>
-                    <div className="text-right">
-                      <p>{formatEth(trade.ethAmount)} ETH</p>
-                      <p className="text-xs text-rh-dim">
+                    <div className="text-right tabular-nums">
+                      <p className="text-sm">
+                        {trade.ethAmount > 0
+                          ? `${formatEth(trade.ethAmount)} ETH`
+                          : `${formatTokenAmount(trade.tokenAmount)} ${token.symbol}`}
+                      </p>
+                      <p className="text-[10px] text-rh-dim">
                         {timeAgo(trade.timestamp)}
                       </p>
                     </div>
@@ -996,7 +1118,9 @@ export default function TokenPage({
             </ConnectButton.Custom>
 
             <p className="mt-3 text-center text-[11px] leading-relaxed text-rh-dim">
-              {token.graduated
+              {isDexToken
+                ? "Swap via Uniswap on Robinhood Chain. Quotes use live DEX liquidity."
+                : token.graduated
                 ? hasTransferTax
                   ? `${CHAIN_CONFIG.creatorFeeBps / 100}% creator + ${CHAIN_CONFIG.platformFeeBps / 100}% platform on every DEX trade (GMGN, Uniswap, etc.) · 1% pool fee · LP locked`
                   : "Uniswap V3 · 1% pool fee · LP locked (legacy token)"
@@ -1084,6 +1208,7 @@ export default function TokenPage({
           </div>
 
           <div className="relative isolate space-y-3 border border-rh-raised bg-black p-5">
+            {!isDexToken && (
             <div>
               <p className="mb-1 text-xs text-rh-muted">Created by</p>
               <Link
@@ -1096,6 +1221,7 @@ export default function TokenPage({
                 Creator profile
               </Link>
             </div>
+            )}
             <div>
               <p className="mb-1 text-xs text-rh-muted">Created</p>
               <p className="text-sm">{timeAgo(token.createdAt)}</p>

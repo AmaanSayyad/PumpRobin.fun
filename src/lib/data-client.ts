@@ -1,10 +1,51 @@
 import type { LaunchMetadata, PlatformStats, TradeData, TradeRecord } from "./data-types";
 
+/** Tokens that must never appear in browse, search, or token pages. */
+const HIDDEN_TOKEN_ADDRESSES = new Set([
+  "0x35a59ed3b6c90ef7e9db18d64c6e577633281375", // VLAD
+]);
+
+export function isHiddenToken(address?: string | null): boolean {
+  if (!address) return false;
+  return HIDDEN_TOKEN_ADDRESSES.has(address.toLowerCase());
+}
+
+/** Chain-wide DEX tokens (not launched through PumpRobin). */
+export function isMarketToken(token: {
+  source?: string;
+  bondingCurve?: string;
+}): boolean {
+  if (token.source === "market") return true;
+  return !token.bondingCurve || token.bondingCurve === "0x0000000000000000000000000000000000000000";
+}
+
+/** Tokens created through PumpRobin (registry or on-chain factory). */
+export function isPumpRobinLaunch(token: { source?: string }): boolean {
+  return token.source === "registry" || token.source === "onchain";
+}
+
 /** Whether a token's paid Explore feature is still active. */
 export function isTokenFeatured(meta?: LaunchMetadata | null): boolean {
   if (!meta?.featured || !meta.featuredUntil) return false;
   const until = new Date(meta.featuredUntil).getTime();
   return Number.isFinite(until) && until > Date.now();
+}
+
+/** Real artwork — empty / indexer placeholders are hidden from Explore browse. */
+export function hasTokenLogo(token: { imageUri?: string | null }): boolean {
+  const src = token.imageUri?.trim() ?? "";
+  if (!src) return false;
+  if (/missing/i.test(src)) return false;
+  return true;
+}
+
+const MIN_EXPLORE_TXNS = 100;
+
+/** Browse lists hide illiquid / spam pairs; search still returns them. */
+export function hasExploreTxns(token: {
+  metadata?: { txns24h?: number } | null;
+}): boolean {
+  return (token.metadata?.txns24h ?? 0) >= MIN_EXPLORE_TXNS;
 }
 
 export const LAUNCH_PRIMARY_SOCIAL_FIELDS = [
@@ -63,6 +104,8 @@ export const EMPTY_STATS: PlatformStats = {
   activeTraders: 0,
   graduatedTokens: 0,
   volume24h: 0,
+  volume24hUsd: 0,
+  totalVolumeUsd: 0,
   feesCollected: 0,
   avgGraduationTime: null,
 };

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { motion } from "framer-motion";
 import { Globe, Sparkles } from "lucide-react";
-import { cn, formatEth, timeAgo } from "@/lib/utils";
+import { cn, formatEth, formatUsd, timeAgo } from "@/lib/utils";
 import type { TokenData } from "@/lib/data-types";
 import { isTokenFeatured } from "@/lib/data-client";
 import { TokenLogo } from "@/components/token-logo";
@@ -108,21 +108,35 @@ export function TokenCard({ token, index = 0 }: TokenCardProps) {
               )}
             </div>
             <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-rh-muted">
-              <span>{formatEth(token.marketCap)} ETH mcap</span>
-              <span>{token.holders} holders</span>
+              <span>
+                {token.metadata?.marketCapUsd
+                  ? `${formatUsd(token.metadata.marketCapUsd)} mcap`
+                  : `${formatEth(token.marketCap)} ETH mcap`}
+              </span>
+              {token.holders > 0 && <span>{token.holders} holders</span>}
               <span>{timeAgo(token.createdAt)}</span>
             </div>
-            <div className="mt-3 h-1 overflow-hidden rounded-full bg-black">
-              <div
-                className="h-full rounded-full bg-rh-lime"
-                style={{ width: `${Math.min(100, token.progress)}%` }}
-              />
-            </div>
-            <p className="mt-1.5 text-xs text-rh-muted">
-              {token.graduated
-                ? "Graduated"
-                : `${token.progress.toFixed(0)}% to graduate`}
-            </p>
+            {token.source === "market" ? (
+              <p className="mt-3 text-xs text-rh-muted">
+                {token.metadata?.dexId
+                  ? `Trade on ${token.metadata.dexId.replace(/-robinhood$/, "")}`
+                  : "Robinhood DEX"}
+              </p>
+            ) : (
+              <>
+                <div className="mt-3 h-1 overflow-hidden rounded-full bg-black">
+                  <div
+                    className="h-full rounded-full bg-rh-lime"
+                    style={{ width: `${Math.min(100, token.progress)}%` }}
+                  />
+                </div>
+                <p className="mt-1.5 text-xs text-rh-muted">
+                  {token.graduated
+                    ? "Graduated"
+                    : `${token.progress.toFixed(0)}% to graduate`}
+                </p>
+              </>
+            )}
           </div>
         </div>
       </Link>

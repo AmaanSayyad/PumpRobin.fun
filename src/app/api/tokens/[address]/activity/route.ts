@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 import { DEFAULT_SUPPLY } from "@/lib/curve";
-import { fetchTokenTopHolders } from "@/lib/uniswap-pool";
+import { fetchTokenActivity } from "@/lib/token-activity";
 import { resolveAnyToken } from "@/lib/market";
+
+export const revalidate = 20;
 
 export async function GET(
   _request: Request,
@@ -14,12 +16,18 @@ export async function GET(
 
   const token = await resolveAnyToken(address).catch(() => null);
   const market = token?.source === "market";
-  const holders = await fetchTokenTopHolders(address, 10, {
+  const activity = await fetchTokenActivity({
+    address,
+    pool: token?.metadata?.uniswapPool,
     supply: market ? 0 : token?.metadata?.supply ?? DEFAULT_SUPPLY,
     creator: token?.creator,
     bondingCurve: token?.bondingCurve,
-    uniswapPool: token?.metadata?.uniswapPool,
+    priceEth: token?.price,
   });
 
-  return NextResponse.json({ holders });
+  return NextResponse.json({
+    holders: activity.holders,
+    holderCount: activity.holderCount,
+    trades: activity.trades,
+  });
 }

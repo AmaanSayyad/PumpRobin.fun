@@ -337,6 +337,13 @@ export const ERC20_ABI = [
   },
   {
     type: "function",
+    name: "decimals",
+    inputs: [],
+    outputs: [{ name: "", type: "uint8" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
     name: "balanceOf",
     inputs: [{ name: "account", type: "address" }],
     outputs: [{ name: "", type: "uint256" }],
@@ -367,6 +374,20 @@ export const ERC20_ABI = [
     name: "totalSupply",
     inputs: [],
     outputs: [{ name: "", type: "uint256" }],
+    stateMutability: "view",
+  },
+] as const;
+
+export const UNISWAP_V3_FACTORY_ABI = [
+  {
+    type: "function",
+    name: "getPool",
+    inputs: [
+      { name: "tokenA", type: "address" },
+      { name: "tokenB", type: "address" },
+      { name: "fee", type: "uint24" },
+    ],
+    outputs: [{ name: "pool", type: "address" }],
     stateMutability: "view",
   },
 ] as const;

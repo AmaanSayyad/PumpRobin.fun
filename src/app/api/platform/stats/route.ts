@@ -1,10 +1,17 @@
 import { NextResponse } from "next/server";
-import { getPlatformStats } from "@/lib/data";
-import { readPlatformState } from "@/lib/registry";
+import { getEcosystemStats } from "@/lib/ecosystem";
 
-/** Public platform stats — derived only from real registry data */
+/** Public homepage stats — Robinhood Chain DEX + explorer, not PumpRobin-only. */
+export const revalidate = 300;
+
 export async function GET() {
-  const state = await readPlatformState();
-  const stats = getPlatformStats(state.tokens, state.trades);
-  return NextResponse.json({ stats });
+  const stats = await getEcosystemStats();
+  return NextResponse.json(
+    { stats },
+    {
+      headers: {
+        "Cache-Control": "public, s-maxage=300, stale-while-revalidate=600",
+      },
+    }
+  );
 }

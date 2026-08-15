@@ -42,6 +42,16 @@ export interface LaunchMetadata {
   deadSupply?: number;
   lpSupplyBps?: number;
   verified?: boolean;
+  dexId?: string;
+  priceUsd?: number;
+  marketCapUsd?: number;
+  volumeUsd24h?: number;
+  liquidityUsd?: number;
+  txns24h?: number;
+  traders24h?: number;
+  priceChange5m?: number;
+  priceChange1h?: number;
+  priceChange6h?: number;
 }
 
 export interface TokenRecord {
@@ -107,7 +117,7 @@ export interface TokenData {
   virtualEthReserves: number;
   virtualTokenReserves: number;
   realTokenReserves: number;
-  source: "registry" | "onchain";
+  source: "registry" | "onchain" | "market";
   txHash?: string;
   metadata?: LaunchMetadata;
 }
@@ -131,6 +141,8 @@ export interface PlatformStats {
   activeTraders: number;
   graduatedTokens: number;
   volume24h: number;
+  volume24hUsd?: number;
+  totalVolumeUsd?: number;
   feesCollected: number;
   avgGraduationTime: number | null;
 }
