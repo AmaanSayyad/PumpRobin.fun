@@ -186,10 +186,10 @@ export async function executeUniswapSwap(params: {
     : parseUnits(params.amount, decimals).toString();
 
   if (!params.isBuy && !params.platformCut) {
-    let minEthOut = 0n;
+    let minEthOut = BigInt(0);
     try {
       const quoted = await getUniswapQuote(params);
-      minEthOut = (BigInt(quoted.amountOut) * 90n) / 100n;
+      minEthOut = (BigInt(quoted.amountOut) * BigInt(90)) / BigInt(100);
     } catch {
       /* still sell; helper enforces amountOutMinimum = 0 on-chain */
     }
