@@ -248,6 +248,13 @@ export function ethInForInstantSupplyPercent(
   return Math.max(minSeed, seed);
 }
 
+/** % price impact of an ETH buy against pooled WETH (Uniswap v3 1% fee). */
+export function uniswapBuyImpactPct(buyEth: number, pooledWeth: number): number {
+  if (!(buyEth > 0) || !(pooledWeth > 0)) return 0;
+  const xin = buyEth * 0.99;
+  return (xin / (pooledWeth + xin)) * 100;
+}
+
 /** Approx Uniswap V3 full-range swap (constant product + pool fee). */
 export function quotePoolSwap(opts: {
   isBuy: boolean;

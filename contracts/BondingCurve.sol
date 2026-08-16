@@ -21,7 +21,7 @@ contract BondingCurve is ReentrancyGuard {
     address public constant POSITION_MANAGER = 0x73991a25C818Bf1f1128dEAaB1492D45638DE0D3;
     address public constant SWAP_ROUTER = 0xCaf681a66D020601342297493863E78C959E5cb2;
     uint24 public constant POOL_FEE = 10_000; // 1% — only enabled V3 tier near 2%
-    uint256 public constant MIN_INSTANT_SEED = 0.002 ether;
+    uint256 public constant MIN_INSTANT_SEED = 0.1 ether;
     uint256 public constant TARGET_START_FDV_ETH = 2 ether;
     uint256 public constant MIN_LP_SUPPLY_BPS = 10_000;
     uint256 public constant MAX_LP_SUPPLY_BPS = 10_000;

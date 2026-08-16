@@ -90,9 +90,9 @@ export const CHAIN_CONFIG = {
   alertsSubDays: 30,
   /** ETH raised on the bonding curve before auto-graduation to Uniswap V3 */
   graduationThreshold: 8,
-  /** Min ETH seed for instant Uniswap launch (~$5 at $2.5k ETH) */
-  minInstantSeedEth: "0.002",
-  minInstantSeedUsdHint: 5,
+  /** Min ETH seed for instant Uniswap launch (~$250 at $2.5k ETH). */
+  minInstantSeedEth: "0.1",
+  minInstantSeedUsdHint: 250,
   /** Target starting FDV — contract puts fewer tokens in LP when seed is small */
   instantTargetFdvEth: 2,
   instantMinLpSupplyBps: 5,

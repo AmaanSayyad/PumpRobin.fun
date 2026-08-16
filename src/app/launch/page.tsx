@@ -62,6 +62,7 @@ import {
   minInstantSeedEth,
   splitInstantSeed,
   supplyPercentForInstantSeed,
+  uniswapBuyImpactPct,
 } from "@/lib/curve";
 
 const EMPTY_SOCIALS = Object.fromEntries(
@@ -1275,10 +1276,11 @@ export default function LaunchPage() {
               />
               <SectionLabel>LP seed & your bag</SectionLabel>
               <p className="mt-1 text-[13px] text-rh-muted">
-                Min {CHAIN_CONFIG.minInstantSeedEth} ETH is liquidity only —{" "}
-                <span className="text-white">you receive 0 tokens</span> and 100% of
-                supply goes in the pool. Add extra ETH or tap 1% / 10% / 20% / 30%
-                to buy a bag for your wallet at launch.
+                Min {CHAIN_CONFIG.minInstantSeedEth} ETH locks as Uniswap liquidity
+                so a $10–$30 buy does not show an 80% price-impact warning. At the
+                minimum, <span className="text-white">you receive 0 tokens</span>{" "}
+                and 100% of supply goes in the pool. Add extra ETH or tap 1% / 10% /
+                20% / 30% to buy a bag at launch.
               </p>
 
               <div className="relative mt-4">
@@ -1301,6 +1303,16 @@ export default function LaunchPage() {
               {buyEthNum > 0 && (
                 <p className="mt-1.5 text-xs tabular-nums text-rh-muted">
                   ≈ {formatUsd(buyEthNum * ethUsd)}
+                </p>
+              )}
+              {instantSplit.lpEth > 0 && (
+                <p className="mt-1.5 text-xs tabular-nums text-rh-muted">
+                  0.01 ETH buy impact ≈{" "}
+                  {uniswapBuyImpactPct(0.01, instantSplit.lpEth).toFixed(1)}% on
+                  Uniswap
+                  {uniswapBuyImpactPct(0.01, instantSplit.lpEth) > 15
+                    ? " — seed more ETH so the pair looks real"
+                    : ""}
                 </p>
               )}
 

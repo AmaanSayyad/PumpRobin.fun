@@ -11,7 +11,7 @@ import "./PumpRobinHook.sol";
  */
 contract PumpRobinFactory {
     uint256 public constant CREATION_FEE = 0.004 ether;
-    uint256 public constant MIN_INSTANT_SEED = 0.002 ether;
+    uint256 public constant MIN_INSTANT_SEED = 0.1 ether;
     uint256 public constant INITIAL_VIRTUAL_ETH = 1.3 ether;
     uint256 public constant INITIAL_VIRTUAL_TOKENS = 1_073_000_000 * 1e18;
 

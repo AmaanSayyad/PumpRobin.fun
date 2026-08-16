@@ -63,7 +63,7 @@ const FAQ = [
   },
   {
     q: "What does it cost?",
-    a: "0.004 ETH creation fee plus at least 0.002 ETH LP seed, paid in the signed factory transaction, plus gas. Buys take a 2% token tax (1% creator + 1% platform).",
+    a: "0.004 ETH creation fee plus at least 0.1 ETH LP seed, paid in the signed factory transaction, plus gas. Buys take a 2% token tax (1% creator + 1% platform).",
   },
 ];
 
