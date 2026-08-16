@@ -4,6 +4,7 @@ import type { LaunchMetadata, PlatformStats, TradeData, TradeRecord } from "./da
 const HIDDEN_TOKEN_ADDRESSES = new Set([
   "0x35a59ed3b6c90ef7e9db18d64c6e577633281375",
   "0xd08b39c865b3686e11be00568435d44c0905a91c",
+  "0x00eaf1c9a686e3824959e1a313632139a034d033",
 ]);
 const HIDDEN_TICKERS = new Set(["vlad"]);
 
