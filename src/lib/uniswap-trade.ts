@@ -7,9 +7,17 @@ import {
   type Hex,
   type Address,
 } from "viem";
-import { getWalletClient, getPublicClient, switchChain } from "@wagmi/core";
+import {
+  getWalletClient,
+  getPublicClient,
+  switchChain,
+  readContract,
+  writeContract,
+  waitForTransactionReceipt,
+} from "@wagmi/core";
 import type { Config } from "wagmi";
 import { robinhoodChain, WETH_ADDRESS } from "@/lib/chain";
+import { CONTRACTS, ERC20_ABI, FOT_UNISWAP_SELLER_ABI } from "@/lib/contracts";
 
 export const NATIVE_ETH = "0x0000000000000000000000000000000000000000" as const;
 
@@ -117,6 +125,52 @@ export async function getUniswapQuote(params: {
   };
 }
 
+/**
+ * PumpRobin v3 sells cannot use the Trading API Permit2 path on Robinhood:
+ * UR 2.1.1 quotes omit a signed permit, Permit2 allowance stays 0, and
+ * MetaMask simulates AllowanceExpired ("Interaction failed").
+ */
+async function sellViaFotSeller(params: {
+  config: Config;
+  swapper: Address;
+  tokenAddress: Address;
+  amountWei: bigint;
+  minEthOut: bigint;
+}): Promise<Hex> {
+  const seller = CONTRACTS.fotSeller;
+  if (!seller) {
+    throw new Error("Sell helper not configured — set NEXT_PUBLIC_FOT_SELLER_ADDRESS");
+  }
+
+  await switchChain(params.config, { chainId: robinhoodChain.id });
+
+  const allowance = (await readContract(params.config, {
+    address: params.tokenAddress,
+    abi: ERC20_ABI,
+    functionName: "allowance",
+    args: [params.swapper, seller],
+  })) as bigint;
+
+  if (allowance < params.amountWei) {
+    const approveHash = await writeContract(params.config, {
+      address: params.tokenAddress,
+      abi: ERC20_ABI,
+      functionName: "approve",
+      args: [seller, params.amountWei],
+    });
+    await waitForTransactionReceipt(params.config, { hash: approveHash });
+  }
+
+  const hash = await writeContract(params.config, {
+    address: seller,
+    abi: FOT_UNISWAP_SELLER_ABI,
+    functionName: "sellTokenForEth",
+    args: [params.tokenAddress, params.amountWei, params.minEthOut],
+  });
+  await waitForTransactionReceipt(params.config, { hash });
+  return hash;
+}
+
 export async function executeUniswapSwap(params: {
   config: Config;
   swapper: Address;
@@ -130,6 +184,23 @@ export async function executeUniswapSwap(params: {
   const amountWei = params.isBuy
     ? parseEther(params.amount).toString()
     : parseUnits(params.amount, decimals).toString();
+
+  if (!params.isBuy && !params.platformCut) {
+    let minEthOut = 0n;
+    try {
+      const quoted = await getUniswapQuote(params);
+      minEthOut = (BigInt(quoted.amountOut) * 90n) / 100n;
+    } catch {
+      /* still sell; helper enforces amountOutMinimum = 0 on-chain */
+    }
+    return sellViaFotSeller({
+      config: params.config,
+      swapper: params.swapper,
+      tokenAddress: params.tokenAddress,
+      amountWei: BigInt(amountWei),
+      minEthOut,
+    });
+  }
 
   if (!params.isBuy) {
     const approval = await postJson<{

@@ -624,7 +624,7 @@ export const CONTRACTS = {
   fotSeller:
     fotSellerEnv && /^0x[a-fA-F0-9]{40}$/.test(fotSellerEnv)
       ? (fotSellerEnv as `0x${string}`)
-      : undefined,
+      : ("0x6b9C32318F82FD220464a2d53D9063e51e629A3F" as `0x${string}`),
   hook:
     hookEnv && /^0x[a-fA-F0-9]{40}$/.test(hookEnv)
       ? (hookEnv as `0x${string}`)
