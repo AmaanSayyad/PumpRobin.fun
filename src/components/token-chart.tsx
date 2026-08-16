@@ -100,7 +100,7 @@ export function TokenChart({
             />
             {!graduated && (
               <p className="pointer-events-none absolute bottom-3 left-3 right-3 rounded-lg bg-black/75 px-3 py-2 text-center text-[11px] text-rh-muted">
-                DEX chart unlocks when the curve graduates to Uniswap V3.
+                DEX chart unlocks once the Uniswap pool is indexed.
               </p>
             )}
           </>

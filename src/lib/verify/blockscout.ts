@@ -40,6 +40,27 @@ const TOKEN_META_ABI = [
     outputs: [{ type: "address" }],
     stateMutability: "view",
   },
+  {
+    type: "function",
+    name: "metadataURI",
+    inputs: [],
+    outputs: [{ type: "string" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "antiSnipeEndsAt",
+    inputs: [],
+    outputs: [{ type: "uint256" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "maxWalletAmount",
+    inputs: [],
+    outputs: [{ type: "uint256" }],
+    stateMutability: "view",
+  },
 ] as const;
 
 const CURVE_CTOR_ABI = [
@@ -67,6 +88,13 @@ const CURVE_CTOR_ABI = [
   {
     type: "function",
     name: "platformFeeRecipient",
+    inputs: [],
+    outputs: [{ type: "address" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "hook",
     inputs: [],
     outputs: [{ type: "address" }],
     stateMutability: "view",
@@ -211,35 +239,59 @@ async function verifyOne(opts: {
 
 async function readTokenCtor(token: Address) {
   const client = getRobinhoodPublicClient();
-  const [name, symbol, imageUri, description, creator, platform] =
-    await Promise.all([
-      client.readContract({ address: token, abi: ERC20_ABI, functionName: "name" }),
-      client.readContract({
-        address: token,
-        abi: ERC20_ABI,
-        functionName: "symbol",
-      }),
-      client.readContract({
-        address: token,
-        abi: TOKEN_META_ABI,
-        functionName: "imageUri",
-      }),
-      client.readContract({
-        address: token,
-        abi: TOKEN_META_ABI,
-        functionName: "description",
-      }),
-      client.readContract({
-        address: token,
-        abi: TOKEN_META_ABI,
-        functionName: "creator",
-      }),
-      client.readContract({
-        address: token,
-        abi: TOKEN_META_ABI,
-        functionName: "platformFeeRecipient",
-      }),
-    ]);
+  const [
+    name,
+    symbol,
+    imageUri,
+    description,
+    metadataURI,
+    creator,
+    platform,
+    antiSnipeEndsAt,
+    maxWalletAmount,
+  ] = await Promise.all([
+    client.readContract({ address: token, abi: ERC20_ABI, functionName: "name" }),
+    client.readContract({
+      address: token,
+      abi: ERC20_ABI,
+      functionName: "symbol",
+    }),
+    client.readContract({
+      address: token,
+      abi: TOKEN_META_ABI,
+      functionName: "imageUri",
+    }),
+    client.readContract({
+      address: token,
+      abi: TOKEN_META_ABI,
+      functionName: "description",
+    }),
+    client.readContract({
+      address: token,
+      abi: TOKEN_META_ABI,
+      functionName: "metadataURI",
+    }),
+    client.readContract({
+      address: token,
+      abi: TOKEN_META_ABI,
+      functionName: "creator",
+    }),
+    client.readContract({
+      address: token,
+      abi: TOKEN_META_ABI,
+      functionName: "platformFeeRecipient",
+    }),
+    client.readContract({
+      address: token,
+      abi: TOKEN_META_ABI,
+      functionName: "antiSnipeEndsAt",
+    }),
+    client.readContract({
+      address: token,
+      abi: TOKEN_META_ABI,
+      functionName: "maxWalletAmount",
+    }),
+  ]);
 
   return encodeAbiParameters(
     [
@@ -247,16 +299,29 @@ async function readTokenCtor(token: Address) {
       { type: "string" },
       { type: "string" },
       { type: "string" },
+      { type: "string" },
       { type: "address" },
       { type: "address" },
+      { type: "bool" },
+      { type: "bool" },
     ],
-    [name, symbol, imageUri, description, creator, platform]
+    [
+      name,
+      symbol,
+      imageUri,
+      description,
+      metadataURI,
+      creator,
+      platform,
+      (antiSnipeEndsAt as bigint) > BigInt(0),
+      (maxWalletAmount as bigint) > BigInt(0),
+    ]
   );
 }
 
 async function readCurveCtor(curve: Address) {
   const client = getRobinhoodPublicClient();
-  const [token, creator, factory, platformFeeRecipient] = await Promise.all([
+  const [token, creator, factory, platformFeeRecipient, hook] = await Promise.all([
     client.readContract({
       address: curve,
       abi: CURVE_CTOR_ABI,
@@ -277,10 +342,16 @@ async function readCurveCtor(curve: Address) {
       abi: CURVE_CTOR_ABI,
       functionName: "platformFeeRecipient",
     }),
+    client.readContract({
+      address: curve,
+      abi: CURVE_CTOR_ABI,
+      functionName: "hook",
+    }),
   ]);
 
   return encodeAbiParameters(
     [
+      { type: "address" },
       { type: "address" },
       { type: "address" },
       { type: "address" },
@@ -293,6 +364,7 @@ async function readCurveCtor(curve: Address) {
       creator,
       factory,
       platformFeeRecipient || FEE_COLLECTOR,
+      hook,
       INITIAL_VIRTUAL_ETH,
       INITIAL_VIRTUAL_TOKENS,
     ]

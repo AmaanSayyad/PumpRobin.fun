@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { RhButton } from "@/components/ui/rh-button";
 import { CHAIN_CONFIG } from "@/lib/chain";
-import { INITIAL_VIRTUAL_ETH, DEFAULT_SUPPLY } from "@/lib/curve";
+import { DEFAULT_SUPPLY } from "@/lib/curve";
 import {
   CREATOR_FEE_CARDS,
   CREATOR_FEES_BODY,
@@ -76,23 +76,23 @@ const FAQ = [
   },
   {
     q: "Is liquidity rug-pullable?",
-    a: "After graduation, the Uniswap V3 LP NFT is sent to the dead address so principal cannot be withdrawn. DYOR on contract addresses and always verify on Blockscout / DEX Screener.",
+    a: "After launch, the Uniswap V3 LP NFT is sent to the dead address so principal cannot be withdrawn. DYOR on contract addresses and always verify on Blockscout / DEX Screener.",
   },
   {
     q: "Can I customize supply?",
-    a: "Yes on the launch form. Standard is 1 billion; custom supply scales virtual token reserves so curve economics stay comparable.",
+    a: "The live factory mints 1 billion tokens. Custom supply on the form is not wired into createToken yet.",
   },
   {
     q: "How do I earn as a creator?",
-    a: `${CREATOR_FEE_PCT}% creator + ${CHAIN_CONFIG.platformFeeBps / 100}% platform on taxed transfers. Fees go straight to the creator wallet and platform wallet as tokens — no pause, no blacklist, no admin.`,
+    a: `${CREATOR_FEE_PCT}% creator + ${CHAIN_CONFIG.platformFeeBps / 100}% platform as a hardcoded buy tax on Uniswap transfers (pool → wallet). Fees go straight to the creator wallet and platform wallet — no pause, no blacklist, no admin.`,
   },
   {
     q: "Why doesn't my logo show on GMGN / DEX Screener?",
-    a: "Indexers don't read on-chain imageUri automatically. After graduation, submit your logo via DEX Screener's Update Token Info on your token page (manual review, usually 24–72h). PumpRobin stores the IPFS URL on-chain and in our registry.",
+    a: "Indexers don't read on-chain imageUri automatically. After launch, submit your logo via DEX Screener's Update Token Info on your token page (manual review, usually 24–72h). PumpRobin stores the IPFS URL on-chain and in our registry.",
   },
   {
     q: "What do max wallet and community options do?",
-    a: "Max wallet aims to cap any wallet at ~2% of supply early (metadata today; on-chain enforcement follows). Community coin / board are optional social features on the token page.",
+    a: "Max wallet is an optional launch-form flag stored with the token page. The live factory does not enforce a 2% cap on-chain. Community coin / board are optional social features.",
   },
 ];
 
@@ -102,9 +102,9 @@ export default function HowItWorksPage() {
       <p className="text-rh-lime text-sm font-medium mb-3">Product</p>
       <h1 className="rh-display text-4xl sm:text-5xl mb-4">How it works</h1>
       <p className="text-rh-muted text-[15px] leading-relaxed mb-10 max-w-2xl">
-        PumpRobin is a fair-launch pad on Robinhood Chain. Launch on a progressive
-        bonding curve that graduates toward Uniswap — price discovery first, DEX
-        liquidity after.
+        PumpRobin is a fair-launch pad on Robinhood Chain. Every launch is a signed
+        factory transaction that pays the creation fee and seeds locked Uniswap V3
+        liquidity — live on DEX Screener from block one.
       </p>
 
       <div className="flex flex-wrap gap-2 mb-14">

@@ -159,32 +159,25 @@ export function splitInstantSeed(seedEth: number): {
   if (!Number.isFinite(seedEth) || seedEth <= 0) {
     return { lpEth: 0, buyEth: 0 };
   }
+  const minSeed = minInstantSeedEth();
+  if (seedEth <= minSeed) {
+    return { lpEth: seedEth, buyEth: 0 };
+  }
   const lpPct = CHAIN_CONFIG.instantLpEthPct / 100;
   const lpEth = seedEth * lpPct;
   const buyEth = seedEth - lpEth;
   return { lpEth, buyEth };
 }
 
-/** LP supply bps for a given LP ETH amount — matches `_lpSupplyBpsForLpEth`. */
-export function lpSupplyBpsForLpEth(lpEth: number): number {
-  if (!Number.isFinite(lpEth) || lpEth <= 0) {
-    return CHAIN_CONFIG.instantMinLpSupplyBps;
-  }
-  const target = Number(CHAIN_CONFIG.instantTargetFdvEth);
-  let bps = (lpEth * 10_000) / target;
-  bps = Math.max(
-    CHAIN_CONFIG.instantMinLpSupplyBps,
-    Math.min(CHAIN_CONFIG.instantMaxLpSupplyBps, bps)
-  );
-  return bps;
+/** LP supply bps — Bags-style launches put 100% of supply in the pool. */
+export function lpSupplyBpsForLpEth(_lpEth: number): number {
+  return 10_000;
 }
 
 /** Estimated starting FDV in ETH for an instant launch seed. */
 export function estimatedInstantFdvEth(seedEth: number): number {
   const { lpEth } = splitInstantSeed(seedEth);
-  const bps = lpSupplyBpsForLpEth(lpEth);
-  if (bps <= 0) return 0;
-  return (lpEth * 10_000) / bps;
+  return lpEth;
 }
 
 /** % of total supply that enters the Uniswap pool at launch. */
@@ -265,7 +258,7 @@ export function quotePoolSwap(opts: {
 }): number {
   const { isBuy, amountIn, pooledWeth, pooledToken } = opts;
   if (amountIn <= 0 || pooledWeth <= 0 || pooledToken <= 0) return 0;
-  const fee = 1 - (opts.poolFeeBps ?? 100) / 10_000;
+  const fee = 1 - (opts.poolFeeBps ?? 200) / 10_000;
   const xin = amountIn * fee;
   if (isBuy) return (pooledToken * xin) / (pooledWeth + xin);
   return (pooledWeth * xin) / (pooledToken + xin);

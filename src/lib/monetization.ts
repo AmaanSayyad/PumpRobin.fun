@@ -5,13 +5,13 @@
 export const MONETIZATION_LIVE = [
   {
     id: "curve-fee",
-    title: "Bonding-curve platform fee",
-    body: "0.3% of every buy/sell on the curve (plus 1% to creators). Scales with volume.",
+    title: "Buy-tax platform fee",
+    body: "1% of every taxed Uniswap buy (plus 1% to creators). Scales with volume.",
   },
   {
     id: "creation-fee",
     title: "Creation fee",
-    body: "0.0005 ETH per launch — covers spam resistance and collector ops.",
+    body: "0.004 ETH per launch — paid on-chain in createToken. Covers spam resistance and collector ops.",
   },
   {
     id: "feature-boost",

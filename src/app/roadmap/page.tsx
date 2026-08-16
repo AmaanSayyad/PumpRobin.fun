@@ -9,21 +9,20 @@ const PHASES = [
     status: "current" as const,
     items: [
       "Ship PumpRobin.fun as a memecoin launchpad UI on Robinhood Chain",
-      "Bonding-curve pricing, explore filters, and rich launch customization",
-      "Registry + Supabase persistence while factory deploys",
+      "Instant Uniswap V3 launches with locked LP",
+      "On-chain creation fee collected in PumpRobinFactory.createToken",
       "Product docs, how-it-works, and developer API surface",
     ],
   },
   {
     id: "02",
-    title: "Phase 2 — On-chain factory & graduation",
-    status: "next" as const,
+    title: "Phase 2 — Factory live",
+    status: "current" as const,
     items: [
-      "Deploy PumpRobinFactory + BondingCurve to Robinhood Chain mainnet",
-      "Wire create / buy / sell to live contracts from the UI",
-      "Creator fee share (1%) paid instantly to creator fee collector",
-      "Platform fee share (0.3%) paid instantly to platform collector",
-      "Uniswap V3 graduation (1% TOKEN/WETH, full-range, LP NFT locked)",
+      "PumpRobinFactory + PumpRobinToken on Robinhood Chain mainnet",
+      "createToken pays 0.004 ETH fee and seeds locked Uniswap V3 LP",
+      "2% hardcoded buy tax (1% creator + 1% platform)",
+      "Registry indexes only confirmed factory transactions",
     ],
   },
   {
@@ -42,7 +41,7 @@ const PHASES = [
     title: "Phase 4 — Long-term expansion",
     status: "planned" as const,
     items: [
-      "Optional Direct Pool mode (instant Uniswap launch)",
+      "Partnerships and ecosystem tooling on Robinhood Chain",
       "Partnerships and ecosystem tooling on Robinhood Chain",
       "Hardened public APIs and indexer-backed charts",
       "Establish PumpRobin as a leading fair-launch pad on the chain",
@@ -66,7 +65,7 @@ export default function RoadmapPage() {
         trader stack on Robinhood Chain.
       </p>
       <p className="text-xs text-rh-dim mb-12">
-        {PHASES.length} phases · Phase 1 in progress
+        {PHASES.length} phases · Factory live on Robinhood Chain
       </p>
 
       <div className="flex flex-wrap gap-2 mb-12 text-xs">
@@ -114,7 +113,7 @@ export default function RoadmapPage() {
 
       <div className="pt-10 border-t border-rh-raised text-center space-y-5">
         <p className="text-rh-muted text-sm max-w-md mx-auto">
-          Phase 1 is live in the app — launch a token or explore bonding-curve projects on
+          The factory is live — launch a token or trade locked Uniswap pools on
           Robinhood Chain today.
         </p>
         <div className="flex flex-wrap justify-center gap-3">

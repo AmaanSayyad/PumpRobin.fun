@@ -19,6 +19,11 @@ export const PUMP_ROBIN_FACTORY_ABI = [
       { name: "symbol", type: "string" },
       { name: "imageUri", type: "string" },
       { name: "description", type: "string" },
+      { name: "metadataURI", type: "string" },
+      { name: "antiSnipe", type: "bool" },
+      { name: "maxWallet", type: "bool" },
+      { name: "feeRecipients", type: "address[]" },
+      { name: "feeShareBps", type: "uint16[]" },
     ],
     outputs: [
       { name: "token", type: "address" },
@@ -45,6 +50,13 @@ export const PUMP_ROBIN_FACTORY_ABI = [
     name: "tokenCount",
     inputs: [],
     outputs: [{ name: "", type: "uint256" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "tokenToCurve",
+    inputs: [{ name: "token", type: "address" }],
+    outputs: [{ name: "", type: "address" }],
     stateMutability: "view",
   },
 ] as const;
@@ -318,6 +330,142 @@ export const PUMP_ROBIN_TOKEN_ABI = [
     outputs: [{ name: "", type: "address" }],
     stateMutability: "view",
   },
+  {
+    type: "function",
+    name: "imageUri",
+    inputs: [],
+    outputs: [{ name: "", type: "string" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "image",
+    inputs: [],
+    outputs: [{ name: "", type: "string" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "buyTax",
+    inputs: [],
+    outputs: [{ name: "", type: "uint256" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "sellTax",
+    inputs: [],
+    outputs: [{ name: "", type: "uint256" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "pendingCreatorFeesOf",
+    inputs: [{ name: "account", type: "address" }],
+    outputs: [{ name: "", type: "uint256" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "pendingCreatorTokens",
+    inputs: [],
+    outputs: [{ name: "", type: "uint256" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "pendingPlatformTokens",
+    inputs: [],
+    outputs: [{ name: "", type: "uint256" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "claimCreatorFees",
+    inputs: [],
+    outputs: [],
+    stateMutability: "nonpayable",
+  },
+  {
+    type: "function",
+    name: "flushPlatformFees",
+    inputs: [],
+    outputs: [],
+    stateMutability: "nonpayable",
+  },
+  {
+    type: "function",
+    name: "hasTransferTax",
+    inputs: [],
+    outputs: [{ name: "", type: "bool" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "metadataURI",
+    inputs: [],
+    outputs: [{ name: "", type: "string" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "isAntiSnipeActive",
+    inputs: [],
+    outputs: [{ name: "", type: "bool" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "creator",
+    inputs: [],
+    outputs: [{ name: "", type: "address" }],
+    stateMutability: "view",
+  },
+] as const;
+
+export const PUMP_ROBIN_HOOK_ABI = [
+  {
+    type: "function",
+    name: "pendingCreatorFees",
+    inputs: [{ name: "token", type: "address" }],
+    outputs: [{ name: "", type: "uint256" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "pendingPlatformFees",
+    inputs: [{ name: "token", type: "address" }],
+    outputs: [{ name: "", type: "uint256" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "claimCreatorFees",
+    inputs: [{ name: "token", type: "address" }],
+    outputs: [],
+    stateMutability: "nonpayable",
+  },
+  {
+    type: "function",
+    name: "flushPlatformFees",
+    inputs: [{ name: "token", type: "address" }],
+    outputs: [],
+    stateMutability: "nonpayable",
+  },
+  {
+    type: "function",
+    name: "sweep",
+    inputs: [{ name: "token", type: "address" }],
+    outputs: [],
+    stateMutability: "nonpayable",
+  },
+  {
+    type: "function",
+    name: "poolIdForToken",
+    inputs: [{ name: "token", type: "address" }],
+    outputs: [{ name: "", type: "bytes32" }],
+    stateMutability: "view",
+  },
 ] as const;
 
 export const ERC20_ABI = [
@@ -466,6 +614,7 @@ export const FOT_UNISWAP_SELLER_ABI = [
 // Set after deploy: NEXT_PUBLIC_FACTORY_ADDRESS in .env.local
 const factoryEnv = process.env.NEXT_PUBLIC_FACTORY_ADDRESS?.trim();
 const fotSellerEnv = process.env.NEXT_PUBLIC_FOT_SELLER_ADDRESS?.trim();
+const hookEnv = process.env.NEXT_PUBLIC_HOOK_ADDRESS?.trim();
 
 export const CONTRACTS = {
   factory:
@@ -475,5 +624,9 @@ export const CONTRACTS = {
   fotSeller:
     fotSellerEnv && /^0x[a-fA-F0-9]{40}$/.test(fotSellerEnv)
       ? (fotSellerEnv as `0x${string}`)
+      : undefined,
+  hook:
+    hookEnv && /^0x[a-fA-F0-9]{40}$/.test(hookEnv)
+      ? (hookEnv as `0x${string}`)
       : undefined,
 } as const;

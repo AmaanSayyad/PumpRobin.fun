@@ -23,6 +23,7 @@ import {
   type HolderRow,
 } from "@/components/token-holders";
 import { DEFAULT_SUPPLY, quotePoolSwap } from "@/lib/curve";
+import { isPumpRobinLaunch } from "@/lib/data-client";
 import { blockscoutVerifyUrl } from "@/lib/indexer-links";
 import {
   cn,
@@ -123,6 +124,7 @@ export default function TokenPage({
   const [chainHolders, setChainHolders] = useState<HolderRow[] | null>(null);
   const [liveTrades, setLiveTrades] = useState<TradeData[]>([]);
   const [holderCount, setHolderCount] = useState<number | null>(null);
+  const [liveVolume24h, setLiveVolume24h] = useState<number | null>(null);
   const [activityLoading, setActivityLoading] = useState(true);
   const [usesFeeRouter, setUsesFeeRouter] = useState(false);
   const [hasTransferTax, setHasTransferTax] = useState(false);
@@ -237,27 +239,20 @@ export default function TokenPage({
   }, [address, upsertToken, refreshTokens]);
 
   const tokenTrades = useMemo(() => {
-    const fromStore = trades
-      .filter((t) => t.tokenAddress.toLowerCase() === address.toLowerCase())
-      .map((t) => ({
-        ...t,
-        timestamp:
-          t.timestamp instanceof Date ? t.timestamp : new Date(t.timestamp),
-      }));
-    const extra = liveTrades.map((t) => ({
+    const normalize = (t: TradeData) => ({
       ...t,
       timestamp:
         t.timestamp instanceof Date ? t.timestamp : new Date(t.timestamp),
-    }));
-    const seen = new Set<string>();
-    const merged: TradeData[] = [];
-    for (const t of [...extra, ...fromStore]) {
-      const key = t.id || `${t.trader}-${t.timestamp.valueOf()}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      merged.push(t);
+    });
+    const extra = liveTrades.map(normalize);
+    if (extra.length > 0) {
+      return extra.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
     }
-    return merged.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
+    return trades
+      .filter((t) => t.tokenAddress.toLowerCase() === address.toLowerCase())
+      .map(normalize)
+      .filter((t) => (Number(t.ethAmount) || 0) >= 1e-6)
+      .sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
   }, [trades, liveTrades, address]);
 
   const topHolders = useMemo(() => {
@@ -287,11 +282,13 @@ export default function TokenPage({
           holders?: HolderRow[];
           holderCount?: number | null;
           trades?: TradeData[];
+          volume24hEth?: number;
         };
         if (cancelled) return;
         if (data.holders?.length) setChainHolders(data.holders);
         if (typeof data.holderCount === "number") setHolderCount(data.holderCount);
-        if (data.trades?.length) {
+        if (typeof data.volume24hEth === "number") setLiveVolume24h(data.volume24hEth);
+        if (data.trades) {
           setLiveTrades(
             data.trades.map((t) => ({
               ...t,
@@ -357,7 +354,9 @@ export default function TokenPage({
         const fees = await readPendingFees(
           wagmiConfig,
           token.bondingCurve as Address,
-          token.price
+          token.price,
+          token.address as Address,
+          activeWallet
         );
         if (!cancelled) setPendingFees(fees);
       } catch {
@@ -367,7 +366,7 @@ export default function TokenPage({
     return () => {
       cancelled = true;
     };
-  }, [token?.bondingCurve, token?.price, usesFeeRouter, wagmiConfig, busy, claimBusy]);
+  }, [token?.bondingCurve, token?.address, token?.price, usesFeeRouter, wagmiConfig, busy, claimBusy, activeWallet]);
 
   useEffect(() => {
     if (!token?.graduated || !activeWallet || !amount || Number(amount) <= 0) {
@@ -406,6 +405,7 @@ export default function TokenPage({
             isBuy: tradeMode === "buy",
             amount,
             tokenDecimals: token.metadata?.decimals ?? 18,
+            platformCut: !isPumpRobinLaunch(token),
           });
           if (cancelled) return;
           let out = q.amountOutFormatted;
@@ -500,6 +500,7 @@ export default function TokenPage({
           isBuy: tradeMode === "buy",
           amount,
           tokenDecimals: token.metadata?.decimals ?? 18,
+          platformCut: !isPumpRobinLaunch(token),
         });
         setAmount("");
         setQuoteOut(null);
@@ -829,10 +830,10 @@ export default function TokenPage({
                 label: isDexToken ? "24h change" : "24h volume",
                 value: isDexToken
                   ? `${token.priceChange24h >= 0 ? "+" : ""}${token.priceChange24h.toFixed(1)}%`
-                  : `${formatEth(token.volume24h)} ETH`,
+                  : `${formatEth(liveVolume24h ?? token.volume24h)} ETH`,
                 hint: isDexToken
                   ? "Price change"
-                  : `~${formatUsd(ethToUsd(token.volume24h, ethUsd))}`,
+                  : `~${formatUsd(ethToUsd(liveVolume24h ?? token.volume24h, ethUsd))}`,
               },
               {
                 label: "Holders",
@@ -1119,12 +1120,8 @@ export default function TokenPage({
 
             <p className="mt-3 text-center text-[11px] leading-relaxed text-rh-dim">
               {isDexToken
-                ? "Swap via Uniswap on Robinhood Chain. Quotes use live DEX liquidity."
-                : token.graduated
-                ? hasTransferTax
-                  ? `${CHAIN_CONFIG.creatorFeeBps / 100}% creator + ${CHAIN_CONFIG.platformFeeBps / 100}% platform on every DEX trade (GMGN, Uniswap, etc.) · 1% pool fee · LP locked`
-                  : "Uniswap V3 · 1% pool fee · LP locked (legacy token)"
-                : `On-chain curve · ${CHAIN_CONFIG.creatorFeeBps / 100}% creator + ${CHAIN_CONFIG.platformFeeBps / 100}% platform · fees accumulate until ~$${CHAIN_CONFIG.feeClaimThresholdUsdHint}`}
+                ? `Swap via Uniswap. Non-PumpRobin tokens pay an extra ${CHAIN_CONFIG.externalSwapFeeBps / 100}% platform fee on this site.`
+                : `${CHAIN_CONFIG.creatorFeeBps / 100}% creator + ${CHAIN_CONFIG.platformFeeBps / 100}% platform on every DEX trade (GMGN, Uniswap, MetaMask, this site) · LP locked`}
             </p>
 
             {usesFeeRouter &&
@@ -1133,34 +1130,37 @@ export default function TokenPage({
                 <div className="mt-4 border border-rh-raised bg-black/60 p-3 text-center">
                   <p className="text-[11px] text-rh-muted">Your accumulated fees</p>
                   <p className="mt-1 text-sm font-medium tabular-nums">
-                    {formatEth(
-                      pendingFees.creatorEth +
-                        pendingFees.creatorTokens * token.price
-                    )}{" "}
-                    ETH
-                    {ethUsd != null && (
-                      <span className="ml-1 text-xs text-rh-dim">
-                        (~
-                        {formatUsd(
-                          ethToUsd(
-                            pendingFees.creatorEth +
-                              pendingFees.creatorTokens * token.price,
-                            ethUsd
-                          )
-                        )}
-                        )
-                      </span>
-                    )}
+                    {pendingFees.creatorTokens > 0
+                      ? `${formatTokenAmount(pendingFees.creatorTokens)} $${token.symbol}`
+                      : `${formatEth(pendingFees.creatorEth)} ETH`}
                   </p>
                   {pendingFees.creatorTokens > 0 && (
                     <p className="mt-1 text-[10px] text-rh-dim">
-                      incl. {formatTokenAmount(pendingFees.creatorTokens)} tokens
-                      (swapped to ETH on claim)
+                      ~{formatEth(pendingFees.creatorTokens * token.price)} ETH
+                      {ethUsd != null && (
+                        <>
+                          {" "}
+                          (~
+                          {formatUsd(
+                            ethToUsd(
+                              pendingFees.creatorTokens * token.price,
+                              ethUsd
+                            )
+                          )}
+                          )
+                        </>
+                      )}
+                    </p>
+                  )}
+                  {pendingFees.creatorTokens <= 0 && ethUsd != null && (
+                    <p className="mt-1 text-[10px] text-rh-dim">
+                      (~
+                      {formatUsd(ethToUsd(pendingFees.creatorEth, ethUsd))})
                     </p>
                   )}
                   <p className="mt-1 text-[10px] text-rh-dim">
-                    Auto-sent at {CHAIN_CONFIG.feeClaimThresholdEth} ETH (~$
-                    {CHAIN_CONFIG.feeClaimThresholdUsdHint}) · claimable above threshold
+                    Claim anytime. Platform share auto-sends after ~
+                    ${CHAIN_CONFIG.feeClaimThresholdUsdHint}.
                   </p>
                   <RhButton
                     className="mt-3 w-full"
@@ -1173,12 +1173,15 @@ export default function TokenPage({
                       void claimCreatorFees({
                         config: wagmiConfig,
                         curve: token.bondingCurve as Address,
+                        token: token.address as Address,
                       })
                         .then(() => {
                           void readPendingFees(
                             wagmiConfig,
                             token.bondingCurve as Address,
-                            token.price
+                            token.price,
+                            token.address as Address,
+                            activeWallet
                           ).then(setPendingFees);
                         })
                         .catch((err) =>
@@ -1191,7 +1194,7 @@ export default function TokenPage({
                       ? "Claiming…"
                       : pendingFees.creatorClaimable
                         ? "Claim creator fees"
-                        : "Below claim threshold"}
+                        : "No fees yet"}
                   </RhButton>
                 </div>
               )}

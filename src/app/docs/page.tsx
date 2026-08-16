@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { RhButton } from "@/components/ui/rh-button";
 import { CHAIN_CONFIG, WETH_ADDRESS } from "@/lib/chain";
-import { INITIAL_VIRTUAL_ETH, INITIAL_VIRTUAL_TOKENS, DEFAULT_SUPPLY } from "@/lib/curve";
+import { DEFAULT_SUPPLY } from "@/lib/curve";
 import {
   CREATOR_FEE_CARDS,
   CREATOR_FEES_BODY,
@@ -30,27 +30,27 @@ const TOC = [
 const FAQ = [
   {
     q: "How much does it cost to launch a token?",
-    a: `${CHAIN_CONFIG.creationFee} ETH creation fee, plus gas. After that you only pay normal network gas for buys and sells.`,
+    a: `${CHAIN_CONFIG.creationFee} ETH creation fee plus at least ${CHAIN_CONFIG.minInstantSeedEth} ETH LP seed, paid in the same signed createToken transaction, plus gas.`,
   },
   {
     q: "Where do creator fees go?",
-    a: `The ${CREATOR_FEE_PCT}% creator-fee share of every bonding-curve trade is paid instantly to the creator fee collector. PumpRobin takes ${PLATFORM_FEE_PCT}% (${TRADE_FEE_PCT}% total).`,
+    a: `Each Uniswap buy takes a ${TRADE_FEE_PCT}% token tax — ${CREATOR_FEE_PCT}% to the creator wallet and ${PLATFORM_FEE_PCT}% to PumpRobin. Both are hardcoded on the token.`,
   },
   {
     q: "Do I need to deploy my own API?",
-    a: "No. Use the site UI, call our public JSON routes, or integrate contracts directly once the factory is deployed.",
+    a: "No. Use the site UI, call public JSON reads, or send createToken on the factory yourself. POST /api/tokens only indexes a confirmed factory transaction.",
   },
   {
     q: "Are launches on-chain today?",
-    a: "Bonding-curve math and registry persistence are live in the app. Set NEXT_PUBLIC_FACTORY_ADDRESS after deploying PumpRobinFactory to create tokens fully on-chain.",
+    a: "Yes. PumpRobinFactory.createToken deploys the token, takes the creation fee, and seeds locked Uniswap V3 liquidity in one transaction.",
   },
   {
-    q: "Where is Uniswap migrate?",
-    a: `On graduation (~${CHAIN_CONFIG.graduationThreshold} ETH), BondingCurve wraps ETH to WETH, creates a Uniswap V3 TOKEN/WETH pool at the 1% fee tier (same as VLAD / CASHCAT / PONS on DEX Screener), seeds a full-range locked LP, then the token page routes trades via the Uniswap Trading API.`,
+    q: "Where is Uniswap liquidity?",
+    a: `At create time the factory wraps the seed into a Uniswap V3 TOKEN/WETH pool at the 1% fee tier and locks the LP NFT at the dead address. The token page routes trades via the Uniswap Trading API.`,
   },
   {
     q: "Are fees transparent?",
-    a: `Yes — ${TRADE_FEE_PCT}% total on bonding-curve trades (${CREATOR_FEE_PCT}% creator + ${PLATFORM_FEE_PCT}% platform). Creation fee is ${CHAIN_CONFIG.creationFee} ETH.`,
+    a: `Yes — ${CHAIN_CONFIG.creationFee} ETH creation fee at launch, ${TRADE_FEE_PCT}% buy tax (${CREATOR_FEE_PCT}% creator + ${PLATFORM_FEE_PCT}% platform), and Uniswap's 1% pool fee on the locked LP.`,
   },
 ];
 
@@ -108,12 +108,12 @@ export default function DocsPage() {
           <section id="overview" className="mb-14 scroll-mt-24">
             <h2 className="text-sm uppercase tracking-wider text-rh-dim mb-4">Overview</h2>
             <p className="text-rh-muted leading-relaxed text-[15px] mb-4">
-              PumpRobin is a fair-launch pad for Robinhood Chain. Primary mode today:
-              bonding curve with constant-product pricing that graduates at{" "}
-              {CHAIN_CONFIG.graduationThreshold} ETH toward Uniswap V3 liquidity.
+              PumpRobin is a fair-launch pad for Robinhood Chain. Every new token is
+              created on-chain: the factory takes a {CHAIN_CONFIG.creationFee} ETH
+              creation fee and immediately seeds a locked Uniswap V3 TOKEN/WETH pool.
             </p>
             <p className="text-xs text-rh-dim">
-              Flow: Create → Trade on curve → Graduate → DEX liquidity / LP fees
+              Flow: Sign createToken → Pay fee + LP seed → Locked Uniswap pool → Trade on DEX
             </p>
           </section>
 
@@ -126,7 +126,7 @@ export default function DocsPage() {
                 <h3 className="text-lg font-medium mb-2">What is PumpRobin.fun?</h3>
                 <p className="text-rh-muted leading-relaxed text-[15px]">
                   A permissionless token launchpad on Robinhood Chain. Launch ERC-20s with
-                  bonding-curve trading and DEX graduation — similar in spirit to pump.fun,
+                  instant locked Uniswap V3 liquidity — similar in spirit to pump.fun,
                   built for an EVM L2.
                 </p>
               </div>
@@ -143,10 +143,11 @@ export default function DocsPage() {
               <div>
                 <h3 className="text-lg font-medium mb-2">What does a launch cost?</h3>
                 <p className="text-rh-muted leading-relaxed text-[15px]">
-                  {CHAIN_CONFIG.creationFee} ETH creation fee, plus gas. Trading fee is{" "}
-                  {CHAIN_CONFIG.tradeFeeBps / 100}% while on the bonding curve (
-                  {CHAIN_CONFIG.creatorFeeBps / 100}% creator +{" "}
-                  {CHAIN_CONFIG.platformFeeBps / 100}% platform).
+                  {CHAIN_CONFIG.creationFee} ETH creation fee plus at least{" "}
+                  {CHAIN_CONFIG.minInstantSeedEth} ETH LP seed, paid in the signed
+                  factory transaction, plus gas. Buys take a {TRADE_FEE_PCT}% token tax
+                  ({CREATOR_FEE_PCT}% creator + {PLATFORM_FEE_PCT}% platform). Uniswap
+                  pool fee is 1%.
                 </p>
               </div>
             </div>
@@ -156,27 +157,28 @@ export default function DocsPage() {
             <h2 className="text-sm uppercase tracking-wider text-rh-dim mb-6">Mechanics</h2>
             <div className="space-y-8">
               <div>
-                <h3 className="text-lg font-medium mb-2">Bonding curve</h3>
+                <h3 className="text-lg font-medium mb-2">Instant Uniswap pool</h3>
                 <p className="text-rh-muted leading-relaxed text-[15px]">
-                  Constant-product AMM with virtual reserves (~{INITIAL_VIRTUAL_ETH} ETH ×{" "}
-                  {INITIAL_VIRTUAL_TOKENS.toLocaleString()} virtual tokens at default
-                  supply). Price rises as buyers enter. Anyone can sell before graduation.
+                  createToken deploys the ERC-20, forwards the creation fee, and calls
+                  seedInstantUniswap with the remaining ETH. ~{CHAIN_CONFIG.instantLpEthPct}%
+                  of the seed locks as LP; the rest buys tokens for the creator. Excess
+                  supply is burned.
                 </p>
               </div>
               <div>
-                <h3 className="text-lg font-medium mb-2">Graduation</h3>
+                <h3 className="text-lg font-medium mb-2">Locked liquidity</h3>
                 <p className="text-rh-muted leading-relaxed text-[15px]">
-                  When the curve accumulates ~{CHAIN_CONFIG.graduationThreshold} ETH, the
-                  token graduates: ETH is wrapped to WETH, a Uniswap V3 TOKEN/WETH pool
-                  (1% fee) is created and seeded full-range, and the LP NFT is locked at
-                  the dead address — then it trades like other Robinhood pairs on DEX Screener.
+                  The Uniswap V3 TOKEN/WETH pool uses the 1% fee tier. The LP NFT is sent
+                  to the dead address so principal cannot be withdrawn. The token then
+                  trades like other Robinhood pairs on DEX Screener.
                 </p>
               </div>
               <div>
                 <h3 className="text-lg font-medium mb-2">Creator fees</h3>
                 <p className="text-rh-muted leading-relaxed text-[15px]">
-                  On-curve trade fee is {TRADE_FEE_PCT}% total — {CREATOR_FEE_PCT}% to the
-                  creator and {PLATFORM_FEE_PCT}% to PumpRobin, paid on each trade.
+                  Buys take a {TRADE_FEE_PCT}% token tax — {CREATOR_FEE_PCT}% to the
+                  creator wallet and {PLATFORM_FEE_PCT}% to PumpRobin, hardcoded on the
+                  token with no admin.
                 </p>
               </div>
             </div>
@@ -274,15 +276,11 @@ export default function DocsPage() {
             </h2>
             <div className="rounded-2xl bg-rh-raised overflow-hidden text-sm">
               <Row k="createFee" v={`${CHAIN_CONFIG.creationFee} ETH`} />
-              <Row k="Trade fee" v={`${CHAIN_CONFIG.tradeFeeBps / 100}% (${CHAIN_CONFIG.creatorFeeBps / 100}% creator + ${CHAIN_CONFIG.platformFeeBps / 100}% platform)`} />
-              <Row k="GRADUATION_ETH" v={`${CHAIN_CONFIG.graduationThreshold} ETH`} />
+              <Row k="Min LP seed" v={`${CHAIN_CONFIG.minInstantSeedEth} ETH`} />
+              <Row k="Buy tax" v={`${TRADE_FEE_PCT}% (${CREATOR_FEE_PCT}% creator + ${PLATFORM_FEE_PCT}% platform)`} />
               <Row k="Uniswap V3 fee" v="1% (10000) TOKEN/WETH" />
-              <Row k="TOTAL_SUPPLY (default)" v={DEFAULT_SUPPLY.toLocaleString()} />
-              <Row k="Virtual ETH" v={String(INITIAL_VIRTUAL_ETH)} />
-              <Row
-                k="Virtual tokens (default)"
-                v={INITIAL_VIRTUAL_TOKENS.toLocaleString()}
-              />
+              <Row k="TOTAL_SUPPLY (factory)" v={DEFAULT_SUPPLY.toLocaleString()} />
+              <Row k="LP NFT" v="Locked at dead address" />
             </div>
           </section>
 
@@ -290,16 +288,16 @@ export default function DocsPage() {
             <h2 className="text-sm uppercase tracking-wider text-rh-dim mb-6">Contracts</h2>
             <p className="text-rh-muted text-[15px] leading-relaxed mb-4">
               Source lives in <code className="text-rh-lime text-[13px]">/contracts</code>:
-              PumpRobinFactory, BondingCurve, PumpRobinToken. Deploy to mainnet/testnet,
-              then set{" "}
-              <code className="text-rh-lime text-[13px]">NEXT_PUBLIC_FACTORY_ADDRESS</code>.
+              PumpRobinFactory, BondingCurve (legacy helpers + instant seed), PumpRobinToken.
+              New launches always go through{" "}
+              <code className="text-rh-lime text-[13px]">createToken</code>.
             </p>
             <div className="rounded-2xl bg-rh-raised p-4 text-sm space-y-2">
-              <p className="text-white font-medium">Factory status</p>
-              <p className="text-rh-muted">
+              <p className="text-white font-medium">Factory</p>
+              <p className="text-rh-muted break-all">
                 {process.env.NEXT_PUBLIC_FACTORY_ADDRESS
-                  ? `Configured: ${process.env.NEXT_PUBLIC_FACTORY_ADDRESS}`
-                  : "Not deployed in this environment — launches use the platform registry until the factory address is set."}
+                  ? process.env.NEXT_PUBLIC_FACTORY_ADDRESS
+                  : "NEXT_PUBLIC_FACTORY_ADDRESS is not set in this environment."}
               </p>
             </div>
             <p className="text-xs text-rh-dim mt-3">
@@ -312,8 +310,8 @@ export default function DocsPage() {
               Public APIs
             </h2>
             <p className="text-rh-muted text-[15px] leading-relaxed mb-4">
-              Light JSON reads for catalog and stats. Full endpoint reference lives on the
-              developers page.
+              Light JSON reads for catalog and stats. Writes only index confirmed
+              factory transactions — see the developers page.
             </p>
             <ul className="space-y-2 text-sm text-rh-muted mb-5">
               <li>

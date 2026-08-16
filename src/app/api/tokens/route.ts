@@ -2,6 +2,10 @@ import { after, NextResponse } from "next/server";
 import { enrichToken, pickSocialMetadata, type LaunchMetadata } from "@/lib/data";
 import { addToken, readPlatformState } from "@/lib/registry";
 import { verifyLaunchedToken } from "@/lib/verify/blockscout";
+import {
+  LaunchVerifyError,
+  verifyFactoryCreateTx,
+} from "@/lib/verify-launch";
 
 export const maxDuration = 300;
 
@@ -16,53 +20,83 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  const body = await request.json();
-  const {
-    name,
-    symbol,
-    imageUri,
-    description,
-    creator,
-    address,
-    bondingCurve,
-    txHash,
-    source,
-    metadata,
-    graduated,
-    uniswapPool,
-    realEthReserves,
-  } = body;
+  let body: Record<string, unknown>;
+  try {
+    body = (await request.json()) as Record<string, unknown>;
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+  }
 
-  if (!name || !symbol || !creator) {
+  const txHash = typeof body.txHash === "string" ? body.txHash.trim() : "";
+  if (!txHash) {
     return NextResponse.json(
-      { error: "name, symbol, and creator are required" },
+      {
+        error:
+          "Indexing requires txHash from a confirmed PumpRobinFactory.createToken transaction. The creation fee is paid on-chain — unsigned metadata is rejected.",
+      },
+      { status: 401 }
+    );
+  }
+
+  let launch;
+  try {
+    launch = await verifyFactoryCreateTx(txHash);
+  } catch (err) {
+    if (err instanceof LaunchVerifyError) {
+      return NextResponse.json({ error: err.message }, { status: err.status });
+    }
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : "Could not verify launch tx" },
+      { status: 502 }
+    );
+  }
+
+  const claimedAddress =
+    typeof body.address === "string" ? body.address.trim().toLowerCase() : "";
+  if (claimedAddress && claimedAddress !== launch.token.toLowerCase()) {
+    return NextResponse.json(
+      { error: "address does not match the TokenCreated event" },
       { status: 400 }
     );
   }
 
-  const meta = (metadata ?? {}) as LaunchMetadata;
+  const state = await readPlatformState();
+  const existing = state.tokens.find(
+    (t) => t.address.toLowerCase() === launch.token.toLowerCase()
+  );
+  if (existing) {
+    return NextResponse.json({ token: enrichToken(existing, state.trades) });
+  }
+
+  const meta = (body.metadata ?? {}) as LaunchMetadata;
+  const description =
+    typeof body.description === "string" ? body.description : "";
+  const imageUri =
+    launch.imageUri ||
+    (typeof body.imageUri === "string" ? body.imageUri : "");
 
   const token = await addToken({
-    name: String(name),
-    symbol: String(symbol),
-    imageUri: String(imageUri || ""),
-    description: String(description || ""),
-    creator: String(creator),
-    address,
-    bondingCurve,
-    txHash,
-    source: source === "onchain" ? "onchain" : "registry",
-    graduated: Boolean(graduated),
-    uniswapPool: uniswapPool ? String(uniswapPool) : undefined,
+    name: launch.name,
+    symbol: launch.symbol,
+    imageUri,
+    description,
+    creator: launch.creator,
+    address: launch.token,
+    bondingCurve: launch.bondingCurve,
+    txHash: launch.txHash,
+    source: "onchain",
+    graduated: true,
+    uniswapPool:
+      typeof body.uniswapPool === "string" ? body.uniswapPool : undefined,
     realEthReserves:
-      typeof realEthReserves === "number" ? realEthReserves : undefined,
+      typeof body.realEthReserves === "number" ? body.realEthReserves : undefined,
     metadata: {
       ...pickSocialMetadata(meta),
       bannerUri: meta.bannerUri ? String(meta.bannerUri) : undefined,
       communityCoin: Boolean(meta.communityCoin),
       communityBoard: Boolean(meta.communityBoard),
       antiSnipe: Boolean(meta.instantLaunch ?? meta.antiSnipe),
-      instantLaunch: Boolean(meta.instantLaunch),
+      instantLaunch: true,
       maxWallet2pct: Boolean(meta.maxWallet2pct),
       customSupply: Boolean(meta.customSupply),
       supply: meta.supply ? Number(meta.supply) : undefined,
@@ -82,28 +116,22 @@ export async function POST(request: Request) {
     },
   });
 
-  const state = await readPlatformState();
-  const onchainAddress =
-    source === "onchain" &&
-    typeof token.address === "string" &&
-    /^0x[a-fA-F0-9]{40}$/.test(token.address)
-      ? token.address.toLowerCase()
-      : null;
+  const next = await readPlatformState();
+  after(async () => {
+    try {
+      const results = await verifyLaunchedToken(launch.token.toLowerCase());
+      console.info("[verify]", launch.token, JSON.stringify(results));
+    } catch (err) {
+      console.error(
+        "[verify] failed",
+        launch.token,
+        err instanceof Error ? err.message : err
+      );
+    }
+  });
 
-  if (onchainAddress) {
-    after(async () => {
-      try {
-        const results = await verifyLaunchedToken(onchainAddress);
-        console.info("[verify]", onchainAddress, JSON.stringify(results));
-      } catch (err) {
-        console.error(
-          "[verify] failed",
-          onchainAddress,
-          err instanceof Error ? err.message : err
-        );
-      }
-    });
-  }
-
-  return NextResponse.json({ token: enrichToken(token, state.trades) }, { status: 201 });
+  return NextResponse.json(
+    { token: enrichToken(token, next.trades) },
+    { status: 201 }
+  );
 }

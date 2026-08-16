@@ -1,6 +1,6 @@
 import { formatEther, type Address, type Hash } from "viem";
 import { ERC20_ABI, UNISWAP_V3_POOL_ABI } from "@/lib/contracts";
-import { WETH_ADDRESS } from "@/lib/chain";
+import { WETH_ADDRESS, FEE_COLLECTOR } from "@/lib/chain";
 import { getRobinhoodPublicClient } from "@/lib/onchain-curve";
 import type { TradeRecord } from "@/lib/data-types";
 
@@ -316,12 +316,15 @@ export async function fetchTokenTopHolders(
     creator?: string;
     bondingCurve?: string | null;
     uniswapPool?: string | null;
+    tokenAddress?: string | null;
   }
 ): Promise<OnChainHolderRow[]> {
   const creator = ctx.creator?.toLowerCase();
   const curve = ctx.bondingCurve?.toLowerCase();
   const pool = ctx.uniswapPool?.toLowerCase();
+  const tokenAddr = ctx.tokenAddress?.toLowerCase();
   const dead = DEAD_ADDRESS;
+  const platform = FEE_COLLECTOR.toLowerCase();
 
   try {
     const [metaRes, holdRes] = await Promise.all([
@@ -374,12 +377,16 @@ export async function fetchTokenTopHolders(
       const isLp = Boolean(pool && addr === pool);
       const isCurve = Boolean(curve && addr === curve);
       const isDev = Boolean(creator && addr === creator);
+      const isPlatform = addr === platform;
+      const isFeeEscrow = Boolean(tokenAddr && addr === tokenAddr);
 
       let label: string | undefined;
       if (isBurned) label = "Burned";
       else if (isLp) label = "LP pool";
       else if (isCurve) label = "Bonding curve";
       else if (isDev) label = "Dev";
+      else if (isPlatform) label = "Platform fees";
+      else if (isFeeEscrow) label = "Creator fees";
 
       rows.push({
         address: addr,

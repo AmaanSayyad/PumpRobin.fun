@@ -4,8 +4,10 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 OUT="src/lib/verify/solc-standard-input.json"
 FEE_COLLECTOR="${FEE_COLLECTOR:-0x61F928CBbc9b65C404C3DB42BDe403D78954aDD9}"
-FACTORY="${NEXT_PUBLIC_FACTORY_ADDRESS:-0x9be41279a726F1568Ad5AAcC8a406Ebf26Df6002}"
-ARGS=$(cast abi-encode "constructor(address)" "$FEE_COLLECTOR")
+FACTORY="${NEXT_PUBLIC_FACTORY_ADDRESS:-0x93E3B918693921E8F485d3200e56604C50F553F0}"
+HOOK="${NEXT_PUBLIC_HOOK_ADDRESS:-0xdbaC8dEfBE0287bB79183A43e4Bf39Cb2A5C2ecc}"
+FEE_COLLECTOR="${FEE_COLLECTOR:-0x61F928CBbc9b65C404C3DB42BDe403D78954aDD9}"
+ARGS=$(cast abi-encode "constructor(address,address)" "$FEE_COLLECTOR" "$HOOK")
 
 forge verify-contract \
   --show-standard-json-input \

@@ -82,6 +82,7 @@ export async function getUniswapQuote(params: {
   isBuy: boolean;
   amount: string;
   tokenDecimals?: number;
+  platformCut?: boolean;
 }): Promise<QuotePreview> {
   const decimals = params.tokenDecimals ?? 18;
   const amountWei = params.isBuy
@@ -97,7 +98,8 @@ export async function getUniswapQuote(params: {
     tokenOut,
     amount: amountWei,
     type: "EXACT_INPUT",
-    slippageTolerance: 2.5,
+    slippageTolerance: params.platformCut ? 12.5 : 5,
+    platformCut: Boolean(params.platformCut),
   });
 
   const outAmount = raw.quote?.output?.amount;
@@ -122,6 +124,7 @@ export async function executeUniswapSwap(params: {
   isBuy: boolean;
   amount: string;
   tokenDecimals?: number;
+  platformCut?: boolean;
 }): Promise<Hex> {
   const decimals = params.tokenDecimals ?? 18;
   const amountWei = params.isBuy

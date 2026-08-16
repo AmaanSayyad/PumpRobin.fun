@@ -43,15 +43,24 @@ export const FEE_COLLECTOR =
 export const CREATOR_FEE_COLLECTOR =
   "0x4654FE1e59547372Db57e9F6865aa7aC3A0C77a3" as const;
 
-/** Official Uniswap v3 deployments on Robinhood Chain (4663) */
+/** Official Uniswap v3 + v4 deployments on Robinhood Chain (4663) */
 export const UNISWAP_V3 = {
   factory: "0x1f7d7550B1b028f7571E69A784071F0205FD2EfA",
   positionManager: "0x73991a25C818Bf1f1128dEAaB1492D45638DE0D3",
   swapRouter02: "0xCaf681a66D020601342297493863E78C959E5cb2",
   /** Robinhood has UR 2.1.1 only — required for Trading API swaps */
   universalRouter: "0x8876789976decbfcbbbe364623c63652db8c0904",
-  /** Matches VLAD / CASHCAT-style Robinhood memecoin pools (~95% of meme TVL) */
-  poolFee: 10_000, // 1%
+  poolFee: 10_000, // 1% — legacy V3 launches
+} as const;
+
+export const UNISWAP_V4 = {
+  poolManager: "0x8366a39CC670B4001A1121B8F6A443A643e40951",
+  positionManager: "0x58daec3116aae6D93017bAAea7749052E8a04fA7",
+  stateView: "0xF3334192D15450CdD385c8B70e03f9A6bD9E673b",
+  quoter: "0x8Dc178eFB8111BB0973Dd9d722ebeFF267c98F94",
+  /** Dynamic-fee flag — PumpRobinHook takes 2% on the WETH leg */
+  poolFee: 0x800000,
+  tickSpacing: 60,
 } as const;
 
 export const CHAIN_CONFIG = {
@@ -90,15 +99,17 @@ export const CHAIN_CONFIG = {
   instantMaxLpSupplyBps: 10_000,
   /** @deprecated Use dynamic lpSupplyBps — max cap only */
   instantLpSupplyPct: 100,
-  /** % of seed ETH that locks as LP (rest = creator buy on Uniswap) */
+  /** % of seed ETH that locks as LP when the creator also takes a first buy */
   instantLpEthPct: 70,
-  /** Bonding-curve + DEX trade fees (1% creator + 1% platform, accumulated) */
+  /** Bonding-curve + DEX trade fees (1% creator + 1% platform on buys) */
   creatorFeeBps: 100,
   platformFeeBps: 100,
   tradeFeeBps: 200, // 2%
-  /** ~$10 at $2.5k ETH — auto-payout / claim threshold per fee bucket */
-  feeClaimThresholdEth: "0.004",
-  feeClaimThresholdUsdHint: 10,
+  /** Extra cut when swapping non-PumpRobin tokens on this site */
+  externalSwapFeeBps: 1000, // 10%
+  /** ~$30 at $2.5k ETH — auto-payout / claim threshold per fee bucket */
+  feeClaimThresholdEth: "0.012",
+  feeClaimThresholdUsdHint: 30,
   totalSupply: 1_000_000_000,
   decimals: 18,
   feeCollector: FEE_COLLECTOR,

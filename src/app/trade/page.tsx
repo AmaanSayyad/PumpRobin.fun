@@ -8,31 +8,31 @@ import { MediaFrame, SplitBlock, BleedHero } from "@/components/ui/media-frame";
 const STAGES = [
   {
     stage: "Launch",
-    fee: "0.0005 ETH",
-    liquidity: "Virtual reserves",
+    fee: "0.004 ETH + seed",
+    liquidity: "Uniswap V3 LP",
     trading: "Instant",
-    settlement: "Bonding curve",
+    settlement: "Factory tx",
   },
   {
-    stage: "Bonding",
-    fee: "Curve spread",
-    liquidity: "Growing ETH pool",
+    stage: "Locked pool",
+    fee: "1% Uniswap + 2% buy tax",
+    liquidity: "LP NFT at dead address",
     trading: "24/7 onchain",
-    settlement: "Constant-product",
+    settlement: "TOKEN/WETH",
   },
   {
-    stage: "Graduate",
-    fee: "Curve complete",
-    liquidity: "DEX LP seed",
+    stage: "Trade",
+    fee: "Network gas",
+    liquidity: "DEX Screener / GMGN",
     trading: "Open market",
-    settlement: "DEX pool",
+    settlement: "Uniswap",
   },
 ];
 
 const FEATURES = [
   {
     title: "Enjoy low launch fees",
-    body: "Deploy an ERC-20 on Robinhood Chain for 0.0005 ETH. No seed LP required — the bonding curve starts at block one.",
+    body: "Deploy an ERC-20 on Robinhood Chain for 0.004 ETH plus a small LP seed. Uniswap liquidity is locked in the same signed transaction.",
     media: (
       <MediaFrame aspect="wide">
         <video
@@ -120,8 +120,8 @@ export default function TradePage() {
           Smarter onchain tools.
         </h1>
         <p className="text-white/70 text-lg max-w-xl mb-10 leading-relaxed">
-          Trade memecoins on bonding curves with instant settlement, transparent
-          pricing, and DEX graduation when the curve fills — all on Robinhood Chain.
+          Trade memecoins on locked Uniswap pools with instant settlement and
+          transparent fees — all on Robinhood Chain.
         </p>
         <div className="flex flex-wrap gap-3">
           <RhButton href="/explore" size="lg">

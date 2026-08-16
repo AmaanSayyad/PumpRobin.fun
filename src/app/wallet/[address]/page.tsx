@@ -17,6 +17,7 @@ import {
 import type { WalletProfile } from "@/lib/wallet-analytics";
 import { explorerAddressUrl } from "@/lib/chain";
 import { TokenLogo } from "@/components/token-logo";
+import { ClaimCreatorButton } from "@/components/claim-creator-fees";
 import { ProgressBar } from "@/components/ui/progress-bar";
 import {
   cn,
@@ -244,11 +245,14 @@ export default function WalletPage({
             <p className="text-sm text-rh-dim">No coins created on PumpRobin.</p>
           ) : (
             profile.created.map((t) => (
-              <Link
+              <div
                 key={t.address}
-                href={`/token/${t.address}`}
                 className="flex items-center gap-4 border border-rh-raised bg-black p-4 transition-colors hover:border-rh-lime/30"
               >
+                <Link
+                  href={`/token/${t.address}`}
+                  className="flex min-w-0 flex-1 items-center gap-4"
+                >
                 <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-xl bg-rh-raised">
                   <TokenLogo src={t.imageUri} alt={t.name} symbol={t.symbol} />
                 </div>
@@ -269,6 +273,7 @@ export default function WalletPage({
                     <ProgressBar value={t.progress} graduated={t.graduated} />
                   </div>
                 </div>
+                </Link>
                 <div className="shrink-0 text-right">
                   <p className="text-sm tabular-nums text-white">
                     {formatEth(t.marketCap)} ETH
@@ -276,8 +281,11 @@ export default function WalletPage({
                   <p className="text-[11px] text-rh-dim">
                     ATH {formatEth(t.athMarketCap)} · {t.holders} holders
                   </p>
+                  <div className="mt-2">
+                    <ClaimCreatorButton token={t.address} curve={t.bondingCurve} />
+                  </div>
                 </div>
-              </Link>
+              </div>
             ))
           )}
         </section>

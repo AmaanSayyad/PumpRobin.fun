@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { robinhoodChain } from "@/lib/chain";
+import { FEE_COLLECTOR, robinhoodChain } from "@/lib/chain";
 import {
   forwardUniswap,
   isAddress,
@@ -48,5 +48,11 @@ export async function POST(req: NextRequest) {
     routingPreference: "BEST_PRICE",
     slippageTolerance,
     protocols: ["V3", "V2", "V4"],
+    ...(body as { platformCut?: boolean }).platformCut
+      ? {
+          portionBips: 1000,
+          portionRecipient: FEE_COLLECTOR,
+        }
+      : {},
   });
 }

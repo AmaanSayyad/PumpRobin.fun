@@ -113,7 +113,7 @@ export default function PortfolioPage() {
           </h1>
           <p className="text-white/70 text-lg max-w-lg mb-8 leading-relaxed">
             Holdings, launches, and PnL from real trades on PumpRobin.fun —
-            bonding curves to DEX graduation.
+            locked Uniswap pools from the first trade.
           </p>
           {!isConnected ? (
             <p className="text-white/55 text-sm">Connect your wallet to load your portfolio.</p>
@@ -199,8 +199,8 @@ export default function PortfolioPage() {
                   Cutting-edge tech meets onchain trading
                 </h2>
                 <p className="text-rh-muted text-lg leading-relaxed mb-8 max-w-md">
-                  Watch price discovery unfold on bonding curves. Track gains and
-                  losses in real time as you buy, sell, and graduate to DEX liquidity.
+                  Watch price discovery unfold on locked Uniswap pools. Track gains and
+                  losses in real time as you buy and sell.
                 </p>
                 <RhButton href="/explore" variant="outline" size="sm">
                   Explore tokens

@@ -20,8 +20,8 @@ export default function EarnPage() {
               Put your launches to work
             </h1>
             <p className="text-white/65 text-lg max-w-md mb-8 leading-relaxed">
-              Create a token on the bonding curve and capture attention as traders discover,
-              buy, and push toward DEX graduation — on Robinhood Chain.
+              Create a token with locked Uniswap liquidity and capture attention as traders
+              discover and buy — on Robinhood Chain.
             </p>
             <RhButton href="/launch" size="lg">
               Get started
@@ -85,8 +85,8 @@ export default function EarnPage() {
               <div className="border border-t-0 border-rh-raised p-6 sm:p-8 flex-1">
                 <h3 className="text-xl font-medium mb-3">Flexible access</h3>
                 <p className="text-rh-muted leading-relaxed">
-                  No lock-ups to launch. Deploy for 0.0005 ETH, trade the curve, graduate when
-                  the market is ready.
+                  No lock-ups to launch. Deploy for 0.004 ETH plus LP seed; trading starts
+                  on Uniswap from block one.
                 </p>
               </div>
             </div>
@@ -98,11 +98,10 @@ export default function EarnPage() {
         <div className="rh-container max-w-3xl mx-auto text-center">
           <h2 className="rh-display text-3xl sm:text-4xl mb-4">Creator fees — paid automatically</h2>
           <p className="text-rh-muted text-lg leading-relaxed mb-6">
-            On bonding-curve trades, <span className="text-rh-lime font-medium">1%</span> goes
-            instantly to the creator fee collector and{" "}
-            <span className="text-white">0.3%</span> to PumpRobin — no claim step. Instant
-            Uniswap launches (like current coins) skip the curve, so those trade fees don&apos;t
-            apply; Uniswap LP fees stay locked with the LP NFT for now.
+            On Uniswap buys, <span className="text-rh-lime font-medium">1%</span> goes
+            instantly to the creator wallet and{" "}
+            <span className="text-white">1%</span> to PumpRobin as a hardcoded token tax —
+            no claim step. Uniswap&apos;s 1% pool fee stays with the locked LP NFT.
           </p>
           <div className="flex flex-wrap justify-center gap-3">
             <RhButton href="/launch" size="lg">
@@ -124,8 +123,8 @@ export default function EarnPage() {
                   Start earning attention onchain
                 </h2>
                 <p className="text-rh-muted text-lg leading-relaxed mb-8 max-w-md">
-                  Launch an ERC-20, seed price discovery on the curve, and let real traders
-                  decide what graduates.
+                  Launch an ERC-20, lock Uniswap liquidity in the same transaction, and let
+                  real traders discover it on-chain.
                 </p>
                 <RhButton href="/launch" size="lg">
                   Launch a token

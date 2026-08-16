@@ -270,7 +270,7 @@ export default function AlertsPage() {
             Creator fees — paid on every trade
           </h3>
           <p className="text-sm leading-relaxed text-rh-muted">
-            On every bonding-curve buy/sell, traders pay{" "}
+            On every Uniswap buy, traders pay a{" "}
             <span className="text-white">
               {CHAIN_CONFIG.tradeFeeBps / 100}%
             </span>{" "}
@@ -282,8 +282,8 @@ export default function AlertsPage() {
             <span className="text-white">
               {CHAIN_CONFIG.platformFeeBps / 100}%
             </span>{" "}
-            goes to PumpRobin — both instantly. Post-graduation Uniswap LP fees
-            are on the roadmap.
+            goes to PumpRobin — both instantly as a hardcoded token tax. Uniswap pool
+            fees stay with the locked LP NFT.
           </p>
           <Link
             href="/earn"

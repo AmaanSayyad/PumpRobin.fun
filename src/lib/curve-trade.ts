@@ -12,7 +12,7 @@ import {
   type Address,
   type Hash,
 } from "viem";
-import { BONDING_CURVE_ABI, CONTRACTS, ERC20_ABI, FOT_UNISWAP_SELLER_ABI, PUMP_ROBIN_TOKEN_ABI } from "@/lib/contracts";
+import { BONDING_CURVE_ABI, CONTRACTS, ERC20_ABI, FOT_UNISWAP_SELLER_ABI, PUMP_ROBIN_HOOK_ABI, PUMP_ROBIN_TOKEN_ABI } from "@/lib/contracts";
 import { CHAIN_CONFIG } from "@/lib/chain";
 
 const DECIMALS = 18;
@@ -268,11 +268,12 @@ export async function executeCurveTrade(input: {
   };
 }
 
-/** Whether this curve supports accumulated fees (v5+) */
+/** Whether this token has claimable creator fees (v4 hook or legacy curve). */
 export async function curveSupportsFeeRouter(
   config: Config,
   curve: Address
 ): Promise<boolean> {
+  if (CONTRACTS.hook) return true;
   try {
     await readContract(config, {
       address: curve,
@@ -299,36 +300,117 @@ export async function tokenHasTransferTax(
   token: Address
 ): Promise<boolean> {
   try {
-    const bps = await readContract(config, {
+    const flagged = await readContract(config, {
       address: token,
       abi: PUMP_ROBIN_TOKEN_ABI,
-      functionName: "FEE_BPS",
+      functionName: "hasTransferTax",
     });
-    return Number(bps) > 0;
+    return Boolean(flagged);
   } catch {
-    return false;
+    try {
+      const bps = await readContract(config, {
+        address: token,
+        abi: PUMP_ROBIN_TOKEN_ABI,
+        functionName: "FEE_BPS",
+      });
+      // Legacy tokens taxed transfers; new v4 tokens expose hasTransferTax() = false.
+      return Number(bps) > 0;
+    } catch {
+      return false;
+    }
   }
 }
 
 export async function readPendingFees(
   config: Config,
   curve: Address,
-  tokenPriceEth = 0
+  tokenPriceEth = 0,
+  token?: Address,
+  claimer?: Address
 ): Promise<PendingFees> {
-  const [creatorEth, platformEth, creatorTokens, platformTokens, threshold] =
-    (await readContract(config, {
-      address: curve,
-      abi: BONDING_CURVE_ABI,
-      functionName: "getPendingFees",
-    })) as [bigint, bigint, bigint, bigint, bigint];
+  let creatorEthNum = 0;
+  let platformEthNum = 0;
+  let creatorTokensNum = 0;
+  let platformTokensNum = 0;
+  let claimThresholdEth = Number(CHAIN_CONFIG.feeClaimThresholdEth);
 
-  const creatorEthNum = Number(formatEther(creatorEth));
-  const platformEthNum = Number(formatEther(platformEth));
-  const creatorTokensNum = Number(formatEther(creatorTokens));
-  const platformTokensNum = Number(formatEther(platformTokens));
-  const claimThresholdEth = Number(formatEther(threshold));
+  if (token) {
+    try {
+      if (claimer) {
+        const due = await readContract(config, {
+          address: token,
+          abi: PUMP_ROBIN_TOKEN_ABI,
+          functionName: "pendingCreatorFeesOf",
+          args: [claimer],
+        });
+        creatorTokensNum = Number(formatEther(due as bigint));
+      } else {
+        const tokenWei = await readContract(config, {
+          address: token,
+          abi: PUMP_ROBIN_TOKEN_ABI,
+          functionName: "pendingCreatorTokens",
+        });
+        creatorTokensNum = Number(formatEther(tokenWei as bigint));
+      }
+    } catch {
+      /* older tokens */
+    }
+    try {
+      const platWei = await readContract(config, {
+        address: token,
+        abi: PUMP_ROBIN_TOKEN_ABI,
+        functionName: "pendingPlatformTokens",
+      });
+      platformTokensNum = Number(formatEther(platWei as bigint));
+    } catch {
+      /* older tokens */
+    }
+  }
+
+  if (CONTRACTS.hook && token) {
+    try {
+      const [creatorWei, platformWei] = await Promise.all([
+        readContract(config, {
+          address: CONTRACTS.hook,
+          abi: PUMP_ROBIN_HOOK_ABI,
+          functionName: "pendingCreatorFees",
+          args: [token],
+        }),
+        readContract(config, {
+          address: CONTRACTS.hook,
+          abi: PUMP_ROBIN_HOOK_ABI,
+          functionName: "pendingPlatformFees",
+          args: [token],
+        }),
+      ]);
+      creatorEthNum += Number(formatEther(creatorWei as bigint));
+      platformEthNum += Number(formatEther(platformWei as bigint));
+    } catch {
+      /* v3 launches are not registered on the hook */
+    }
+  }
+
+  try {
+    const [creatorEth, platformEth, creatorTokens, platformTokens, threshold] =
+      (await readContract(config, {
+        address: curve,
+        abi: BONDING_CURVE_ABI,
+        functionName: "getPendingFees",
+      })) as [bigint, bigint, bigint, bigint, bigint];
+    creatorEthNum += Number(formatEther(creatorEth));
+    platformEthNum += Number(formatEther(platformEth));
+    if (!claimer) {
+      creatorTokensNum += Number(formatEther(creatorTokens));
+    }
+    platformTokensNum += Number(formatEther(platformTokens));
+    claimThresholdEth = Number(formatEther(threshold));
+  } catch {
+    /* curve may not expose getPendingFees */
+  }
+
   const creatorTokenEth = creatorTokensNum * tokenPriceEth;
-  const platformTokenEth = platformTokensNum * tokenPriceEth;
+  const hasPending =
+    creatorEthNum > 0 || creatorTokensNum > 0 || creatorTokenEth > 0;
 
   return {
     creatorEth: creatorEthNum,
@@ -336,20 +418,47 @@ export async function readPendingFees(
     creatorTokens: creatorTokensNum,
     platformTokens: platformTokensNum,
     claimThresholdEth,
-    creatorClaimable:
-      creatorEthNum + creatorTokenEth >= claimThresholdEth,
+    creatorClaimable: hasPending,
   };
 }
 
 export async function claimCreatorFees(input: {
   config: Config;
   curve: Address;
+  token?: Address;
 }): Promise<Hash> {
-  const hash = await writeContract(input.config, {
-    address: input.curve,
-    abi: BONDING_CURVE_ABI,
-    functionName: "claimCreatorFees",
-  });
+  if (input.token) {
+    try {
+      const hash = await writeContract(input.config, {
+        address: input.token,
+        abi: PUMP_ROBIN_TOKEN_ABI,
+        functionName: "claimCreatorFees",
+      });
+      const receipt = await waitForTransactionReceipt(input.config, { hash });
+      if (receipt.status !== "success") {
+        throw new Error("Claim transaction reverted");
+      }
+      return hash;
+    } catch (err) {
+      if (err instanceof Error && err.message === "Claim transaction reverted") {
+        throw err;
+      }
+    }
+  }
+
+  const hash =
+    CONTRACTS.hook && input.token
+      ? await writeContract(input.config, {
+          address: CONTRACTS.hook,
+          abi: PUMP_ROBIN_HOOK_ABI,
+          functionName: "claimCreatorFees",
+          args: [input.token],
+        })
+      : await writeContract(input.config, {
+          address: input.curve,
+          abi: BONDING_CURVE_ABI,
+          functionName: "claimCreatorFees",
+        });
   const receipt = await waitForTransactionReceipt(input.config, { hash });
   if (receipt.status !== "success") {
     throw new Error("Claim transaction reverted");

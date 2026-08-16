@@ -19,8 +19,8 @@ export default function TermsPage() {
         <Section title="1. Nature of the Service">
           <p>
             PumpRobin provides non-custodial software infrastructure that lets users create
-            and trade tokens on Robinhood Chain, including bonding-curve launches and
-            (when available) DEX graduation flows.
+            and trade tokens on Robinhood Chain, including instant Uniswap V3 launches with
+            locked liquidity.
           </p>
           <p>
             PumpRobin is not a bank, broker, exchange operator, custodian, investment

@@ -10,13 +10,13 @@ import { MediaFrame, SplitHero } from "@/components/ui/media-frame";
 const POINTS = [
   {
     title: "Get rewarded, on repeat",
-    body: "Enter early on the bonding curve. As buyers arrive, price discovery compounds onchain — visible on every trade.",
+    body: "Enter early on a new Uniswap pool. As buyers arrive, price discovery compounds onchain — visible on every trade.",
     media: "/brand/staking/container-1.jpg",
     isVideo: false,
   },
   {
     title: "Competitive upside",
-    body: "Thin early curves move more on each buy. Late entries pay the discovered price. Timing is the edge.",
+    body: "Thin early pools move more on each buy. Late entries pay the discovered price. Timing is the edge.",
     media: "/brand/staking/container-2.jpg",
     isVideo: false,
   },
@@ -38,10 +38,10 @@ export default function EarlyPage() {
             <h1 className="rh-display text-[clamp(2.5rem,5.5vw,4.25rem)] text-white leading-[1.05] mb-5 max-w-lg">
               Hold early.
               <br />
-              Ride the curve.
+              Trade the pool.
             </h1>
             <p className="text-white/65 text-lg max-w-md mb-8 leading-relaxed">
-              Buy tokens while they&apos;re bonding — before DEX graduation — for as little
+              Buy tokens at launch — as soon as the locked Uniswap pool is live — for as little
               ETH as you choose. Self-custody from the first trade.
             </p>
             <RhButton href="/explore" size="lg">
@@ -113,7 +113,7 @@ export default function EarlyPage() {
         </div>
         <div className="relative z-10 text-center px-5 py-20 max-w-xl mx-auto">
           <h2 className="rh-display text-3xl sm:text-5xl text-white mb-8">
-            Start early on the next bonding curve
+            Start early on the next launch
           </h2>
           <RhButton href="/explore" size="lg">
             Get started

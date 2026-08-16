@@ -44,3 +44,38 @@ export async function pinFileToIpfs(
 
   return { cid: json.IpfsHash, url: pinataGatewayUrl(json.IpfsHash) };
 }
+
+export async function pinJsonToIpfs(
+  data: unknown,
+  name: string
+): Promise<{ cid: string; url: string }> {
+  const jwt = process.env.PINATA_JWT;
+  if (!jwt) {
+    throw new Error("PINATA_JWT is not configured");
+  }
+
+  const res = await fetch("https://api.pinata.cloud/pinning/pinJSONToIPFS", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${jwt}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      pinataContent: data,
+      pinataMetadata: { name: name.slice(0, 120) },
+      pinataOptions: { cidVersion: 1 },
+    }),
+  });
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`Pinata JSON upload failed (${res.status}): ${text.slice(0, 200)}`);
+  }
+
+  const json = (await res.json()) as { IpfsHash: string };
+  if (!json.IpfsHash) {
+    throw new Error("Pinata response missing IpfsHash");
+  }
+
+  return { cid: json.IpfsHash, url: pinataGatewayUrl(json.IpfsHash) };
+}

@@ -12,7 +12,7 @@ import { formatCount, formatUsd } from "@/lib/utils";
 const FEATURES = [
   {
     title: "The launchpad for memecoins",
-    body: "Deploy an ERC-20 on Robinhood Chain in one transaction. Bonding curve starts at block one — no seed LP required.",
+    body: "Deploy an ERC-20 on Robinhood Chain in one signed factory transaction. Creation fee plus LP seed land on-chain together — Uniswap liquidity is locked from block one.",
     href: "/launch",
     cta: "Launch a token",
     image: "/brand/chain/container1-desktop.jpg",
@@ -23,7 +23,7 @@ const FEATURES = [
   },
   {
     title: "Create new ways to trade",
-    body: "Buy and sell on a constant-product curve. Price discovery is automatic. Graduate to DEX liquidity when the curve fills.",
+    body: "Buy and sell on Uniswap V3 from the first block. Price discovery is the pool. Liquidity is locked — not a curve you graduate later.",
     href: "/explore",
     cta: "Explore tokens",
     image: "/brand/chain/speed-desktop.jpg",
@@ -299,7 +299,7 @@ export default function HomePage() {
           <h2 className="rh-display text-4xl sm:text-5xl lg:text-6xl mb-8 text-white">
             Join the next generation
             <br />
-            of onchain builders
+            of memecoins
           </h2>
           <RhButton href="/launch" size="lg">
             Start launching

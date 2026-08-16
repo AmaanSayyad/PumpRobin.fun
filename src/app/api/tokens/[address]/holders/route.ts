@@ -19,6 +19,7 @@ export async function GET(
     creator: token?.creator,
     bondingCurve: token?.bondingCurve,
     uniswapPool: token?.metadata?.uniswapPool,
+    tokenAddress: address,
   });
 
   return NextResponse.json({ holders });

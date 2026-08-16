@@ -5,10 +5,14 @@ import {
   readPlatformState,
   updateTokenCurve,
 } from "@/lib/registry";
+import {
+  LaunchVerifyError,
+  verifyIndexableTradeTx,
+} from "@/lib/verify-launch";
 
 /**
- * Index an on-chain bonding-curve trade into the registry + sync reserves.
- * Called after a successful BondingCurve.buy / .sell wallet tx.
+ * Index a confirmed on-chain trade into the registry + sync reserves.
+ * Requires txHash from the factory, Uniswap router, FoT seller, or bonding curve.
  */
 export async function POST(request: Request) {
   const body = await request.json();
@@ -47,6 +51,12 @@ export async function POST(request: Request) {
   if (!tokenAddress || !trader || typeof ethAmount !== "number") {
     return NextResponse.json({ error: "Invalid sync payload" }, { status: 400 });
   }
+  if (!txHash) {
+    return NextResponse.json(
+      { error: "txHash from a confirmed on-chain trade is required" },
+      { status: 401 }
+    );
+  }
 
   const state = await readPlatformState();
   const token = state.tokens.find(
@@ -54,6 +64,21 @@ export async function POST(request: Request) {
   );
   if (!token) {
     return NextResponse.json({ error: "Token not found" }, { status: 404 });
+  }
+
+  try {
+    await verifyIndexableTradeTx({
+      txHash,
+      bondingCurve: token.bondingCurve,
+    });
+  } catch (err) {
+    if (err instanceof LaunchVerifyError) {
+      return NextResponse.json({ error: err.message }, { status: err.status });
+    }
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : "Could not verify trade tx" },
+      { status: 502 }
+    );
   }
 
   const execPrice = tradeExecutionPrice({

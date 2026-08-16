@@ -4,42 +4,35 @@ pragma solidity ^0.8.20;
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "./PumpRobinToken.sol";
+import "./PumpRobinHook.sol";
 import "./interfaces/IWETH.sol";
 import "./interfaces/IUniswapV3.sol";
 import "./libraries/SqrtPriceMath.sol";
 
 /**
  * @title BondingCurve
- * @notice pump.fun-style bonding curve until graduation, then Uniswap V3.
- * @dev Trades on the constant-product curve until `GRADUATION_THRESHOLD` ETH
- *      is raised. Each buy/sell pays 1% to the token creator + 1% to the
- *      platform (accumulated; auto-paid or claimable at ~$10 threshold).
- *      After graduation, a 2% token transfer fee applies on every DEX trade
- *      (GMGN, Axiom, Uniswap, etc.) — not only via PumpRobin UI.
+ * @notice Instant Uniswap V3 launch: 100% supply in the pool, LP NFT to 0xdead.
+ * @dev V3 is what GMGN / Dexscreener / Uniswap Trading API index on Robinhood.
+ *      The unused `hook` constructor arg is kept so factory ABI stays stable.
  */
 contract BondingCurve is ReentrancyGuard {
-    /// @dev Robinhood Chain Uniswap V3 + WETH (canonical deployments)
     address public constant WETH = 0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73;
     address public constant UNISWAP_V3_FACTORY = 0x1f7d7550B1b028f7571E69A784071F0205FD2EfA;
     address public constant POSITION_MANAGER = 0x73991a25C818Bf1f1128dEAaB1492D45638DE0D3;
     address public constant SWAP_ROUTER = 0xCaf681a66D020601342297493863E78C959E5cb2;
-    uint24 public constant POOL_FEE = 10_000; // 1%
-    /// @notice Minimum total seed for instant Uniswap launch (~$5 at $2.5k ETH)
+    uint24 public constant POOL_FEE = 10_000; // 1% — only enabled V3 tier near 2%
     uint256 public constant MIN_INSTANT_SEED = 0.002 ether;
-    /// @notice Target starting FDV — smaller seeds use fewer tokens in LP
     uint256 public constant TARGET_START_FDV_ETH = 2 ether;
-    /// @notice Dynamic LP supply bounds (bps of 1B total supply)
-    uint256 public constant MIN_LP_SUPPLY_BPS = 5; // 0.05%
-    uint256 public constant MAX_LP_SUPPLY_BPS = 10_000; // 100% — needed for ~30% creator buy
-    /// @notice ETH split for instant launch: LP vs creator buy
-    uint256 public constant INSTANT_LP_ETH_BPS = 7_000; // 70% LP / 30% buy
+    uint256 public constant MIN_LP_SUPPLY_BPS = 10_000;
+    uint256 public constant MAX_LP_SUPPLY_BPS = 10_000;
+    uint256 public constant INSTANT_LP_ETH_BPS = 7_000;
     int24 public constant TICK_LOWER = -887_200;
     int24 public constant TICK_UPPER = 887_200;
-    /// @notice LP NFT recipient — permanent lock (indexers can verify owner)
     address public constant LP_LOCK_RECIPIENT =
         0x000000000000000000000000000000000000dEaD;
 
     PumpRobinToken public immutable token;
+    PumpRobinHook public immutable hook;
     address public immutable creator;
     address public immutable factory;
     address public immutable platformFeeRecipient;
@@ -53,7 +46,6 @@ contract BondingCurve is ReentrancyGuard {
     uint256 public constant CREATOR_FEE_BPS = 100;
     uint256 public constant PLATFORM_FEE_BPS = 100;
     uint256 public constant FEE_BPS = CREATOR_FEE_BPS + PLATFORM_FEE_BPS;
-    /// @notice ~$10 at $2.5k ETH — auto-distribute / manual claim threshold
     uint256 public constant FEE_CLAIM_THRESHOLD = 0.004 ether;
 
     uint256 public pendingCreatorFees;
@@ -112,11 +104,14 @@ contract BondingCurve is ReentrancyGuard {
         address creator_,
         address factory_,
         address platformFeeRecipient_,
+        address hook_,
         uint256 initialVirtualEth,
         uint256 initialVirtualTokens
     ) {
         require(platformFeeRecipient_ != address(0), "Fee recipient required");
+        require(hook_ != address(0), "Hook required");
         token = PumpRobinToken(token_);
+        hook = PumpRobinHook(payable(hook_));
         creator = creator_;
         factory = factory_;
         platformFeeRecipient = platformFeeRecipient_;
@@ -147,9 +142,10 @@ contract BondingCurve is ReentrancyGuard {
     }
 
     /**
-     * @notice Factory-only: skip bonding curve and seed Uniswap immediately.
-     * @dev LP token % scales with seed size so FDV stays ~TARGET_START_FDV_ETH+.
-     *      Small seeds (e.g. $5) put fewer tokens in the pool — each buy stays expensive.
+     * @notice Factory-only: skip bonding curve and seed Uniswap V3 immediately.
+     * @dev 100% of supply goes in the pool. Extra ETH above the min seed buys
+     *      tokens for the creator before the pair is registered (so anti-snipe
+     *      does not tax the first buy).
      */
     function seedInstantUniswap(address recipient, uint256 minTokensOut)
         external
@@ -161,27 +157,27 @@ contract BondingCurve is ReentrancyGuard {
         require(recipient != address(0), "Bad recipient");
         require(msg.value >= MIN_INSTANT_SEED, "Need instant seed");
 
-        uint256 lpEth = (msg.value * INSTANT_LP_ETH_BPS) / 10_000;
-        uint256 buyEth = msg.value - lpEth;
-
-        uint256 lpSupplyBps = _lpSupplyBpsForLpEth(lpEth);
-        uint256 tokenForLp = (TOTAL_SUPPLY * lpSupplyBps) / 10_000;
-
-        uint256 balance = IERC20(address(token)).balanceOf(address(this));
-        require(tokenForLp > 0 && tokenForLp <= balance, "Bad lp tokens");
-        uint256 excess = balance - tokenForLp;
-        if (excess > 0) {
-            IERC20(address(token)).transfer(LP_LOCK_RECIPIENT, excess);
+        uint256 lpEth;
+        uint256 buyEth;
+        if (msg.value <= MIN_INSTANT_SEED) {
+            lpEth = msg.value;
+            buyEth = 0;
+        } else {
+            lpEth = (msg.value * INSTANT_LP_ETH_BPS) / 10_000;
+            buyEth = msg.value - lpEth;
         }
+
+        uint256 tokenForLp = IERC20(address(token)).balanceOf(address(this));
+        require(tokenForLp > 0, "No tokens");
 
         _graduateWithEth(lpEth);
 
-        uint256 estimatedFdv = (lpEth * 10_000) / lpSupplyBps;
+        uint256 estimatedFdv = lpEth;
         emit InstantSeeded(
             uniswapPool,
             lpEth,
             buyEth,
-            lpSupplyBps,
+            10_000,
             tokenForLp,
             estimatedFdv
         );
@@ -191,9 +187,10 @@ contract BondingCurve is ReentrancyGuard {
             uint256 price = tokensOut > 0 ? (buyEth * 1e18) / tokensOut : getPrice();
             emit Trade(recipient, true, buyEth, tokensOut, price);
         }
+
+        token.setUniswapPair(uniswapPool);
     }
 
-    /// @notice Buy on Uniswap — 2% token transfer fee applies automatically
     function buyOnUniswap(uint256 minTokensOut) external payable nonReentrant {
         require(graduated && uniswapPool != address(0), "No pool");
         require(msg.value > 0, "No ETH");
@@ -203,7 +200,6 @@ contract BondingCurve is ReentrancyGuard {
         emit Trade(msg.sender, true, msg.value, tokensOut, price);
     }
 
-    /// @notice Sell on Uniswap — 2% token transfer fee applies automatically
     function sellOnUniswap(uint256 tokenAmount, uint256 minEthOut)
         external
         nonReentrant
@@ -211,13 +207,8 @@ contract BondingCurve is ReentrancyGuard {
         require(graduated && uniswapPool != address(0), "No pool");
         require(tokenAmount > 0, "No tokens");
 
-        // FoT-safe: older tokens tax user→curve, so only swap what we actually receive.
-        uint256 beforeBal = IERC20(address(token)).balanceOf(address(this));
         IERC20(address(token)).transferFrom(msg.sender, address(this), tokenAmount);
-        uint256 received = IERC20(address(token)).balanceOf(address(this)) - beforeBal;
-        require(received > 0, "Zero received");
-
-        IERC20(address(token)).approve(SWAP_ROUTER, received);
+        IERC20(address(token)).approve(SWAP_ROUTER, tokenAmount);
 
         uint256 wethOut = ISwapRouter02(SWAP_ROUTER).exactInputSingle(
             ISwapRouter02.ExactInputSingleParams({
@@ -225,7 +216,7 @@ contract BondingCurve is ReentrancyGuard {
                 tokenOut: WETH,
                 fee: POOL_FEE,
                 recipient: address(this),
-                amountIn: received,
+                amountIn: tokenAmount,
                 amountOutMinimum: 0,
                 sqrtPriceLimitX96: 0
             })
@@ -237,8 +228,7 @@ contract BondingCurve is ReentrancyGuard {
         (bool sent, ) = msg.sender.call{value: wethOut}("");
         require(sent, "ETH transfer failed");
 
-        uint256 price = received > 0 ? (wethOut * 1e18) / received : getPrice();
-        emit Trade(msg.sender, false, wethOut, received, price);
+        emit Trade(msg.sender, false, wethOut, tokenAmount, getPrice());
     }
 
     function getPendingFees()
@@ -265,18 +255,16 @@ contract BondingCurve is ReentrancyGuard {
         require(msg.sender == creator, "Not creator");
         uint256 ethOut = pendingCreatorFees;
         uint256 tokens = pendingCreatorTokenFees;
-        uint256 tokenEthVal = _tokenFeesEthValue(tokens);
-        require(ethOut + tokenEthVal >= FEE_CLAIM_THRESHOLD, "Below threshold");
-
         pendingCreatorFees = 0;
         pendingCreatorTokenFees = 0;
-
+        require(ethOut > 0 || tokens > 0, "Nothing to claim");
         if (tokens > 0) {
-            ethOut += _swapTokensForEth(tokens);
+            IERC20(address(token)).transfer(creator, tokens);
         }
-        require(ethOut > 0, "Nothing to claim");
-        (bool ok, ) = creator.call{value: ethOut}("");
-        require(ok, "Creator payout failed");
+        if (ethOut > 0) {
+            (bool ok, ) = creator.call{value: ethOut}("");
+            require(ok, "Creator payout failed");
+        }
         emit CreatorFeesClaimed(creator, ethOut);
     }
 
@@ -284,22 +272,19 @@ contract BondingCurve is ReentrancyGuard {
         require(msg.sender == platformFeeRecipient, "Not platform");
         uint256 ethOut = pendingPlatformFees;
         uint256 tokens = pendingPlatformTokenFees;
-        uint256 tokenEthVal = _tokenFeesEthValue(tokens);
-        require(ethOut + tokenEthVal >= FEE_CLAIM_THRESHOLD, "Below threshold");
-
         pendingPlatformFees = 0;
         pendingPlatformTokenFees = 0;
-
+        require(ethOut > 0 || tokens > 0, "Nothing to claim");
         if (tokens > 0) {
-            ethOut += _swapTokensForEth(tokens);
+            IERC20(address(token)).transfer(platformFeeRecipient, tokens);
         }
-        require(ethOut > 0, "Nothing to claim");
-        (bool ok, ) = platformFeeRecipient.call{value: ethOut}("");
-        require(ok, "Platform payout failed");
+        if (ethOut > 0) {
+            (bool ok, ) = platformFeeRecipient.call{value: ethOut}("");
+            require(ok, "Platform payout failed");
+        }
         emit FeesDistributed(creator, 0, platformFeeRecipient, ethOut);
     }
 
-    /// @notice Preview instant-launch economics for a seed amount (excl. creation fee)
     function previewInstantLaunch(uint256 seedEth)
         external
         pure
@@ -310,10 +295,12 @@ contract BondingCurve is ReentrancyGuard {
             uint256 estimatedFdvEth
         )
     {
-        lpEth = (seedEth * INSTANT_LP_ETH_BPS) / 10_000;
+        lpEth = seedEth <= MIN_INSTANT_SEED
+            ? seedEth
+            : (seedEth * INSTANT_LP_ETH_BPS) / 10_000;
         buyEth = seedEth - lpEth;
-        lpSupplyBps = _lpSupplyBpsForLpEth(lpEth);
-        estimatedFdvEth = (lpEth * 10_000) / lpSupplyBps;
+        lpSupplyBps = 10_000;
+        estimatedFdvEth = lpEth;
     }
 
     function _lpSupplyBpsForLpEth(uint256 lpEth) internal pure returns (uint256) {
@@ -376,6 +363,7 @@ contract BondingCurve is ReentrancyGuard {
 
         if (realEthReserves >= GRADUATION_THRESHOLD) {
             _graduateWithEth(address(this).balance);
+            token.setUniswapPair(uniswapPool);
         }
     }
 
@@ -503,30 +491,6 @@ contract BondingCurve is ReentrancyGuard {
         } else {
             IERC20(asset).transfer(LP_LOCK_RECIPIENT, amount);
         }
-    }
-
-    function _tokenFeesEthValue(uint256 tokenAmt) internal view returns (uint256) {
-        if (tokenAmt == 0) return 0;
-        uint256 price = getPrice();
-        if (price == 0) return 0;
-        return (tokenAmt * price) / 1e18;
-    }
-
-    function _swapTokensForEth(uint256 tokenAmount) internal returns (uint256 ethOut) {
-        require(tokenAmount > 0, "No tokens");
-        IERC20(address(token)).approve(SWAP_ROUTER, tokenAmount);
-        ethOut = ISwapRouter02(SWAP_ROUTER).exactInputSingle(
-            ISwapRouter02.ExactInputSingleParams({
-                tokenIn: address(token),
-                tokenOut: WETH,
-                fee: POOL_FEE,
-                recipient: address(this),
-                amountIn: tokenAmount,
-                amountOutMinimum: 0,
-                sqrtPriceLimitX96: 0
-            })
-        );
-        IWETH(WETH).withdraw(ethOut);
     }
 
     receive() external payable {}

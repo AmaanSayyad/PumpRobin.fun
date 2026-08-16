@@ -10,7 +10,7 @@ import { MediaFrame, SplitHero } from "@/components/ui/media-frame";
  */
 
 const COST_ROWS = [
-  { platform: "PumpRobin.fun", amount: "1% creator + 0.3% platform", delta: "—", highlight: true },
+  { platform: "PumpRobin.fun", amount: "1% creator + 1% platform", delta: "—", highlight: true },
   { platform: "Typical CEX listing", amount: "High listing fees", delta: "Gated", highlight: false },
   { platform: "Seeded AMM", amount: "Requires LP capital", delta: "Upfront", highlight: false },
   { platform: "Permissioned pad", amount: "Approvals required", delta: "Waitlist", highlight: false },
@@ -19,7 +19,7 @@ const COST_ROWS = [
 const TOOLKIT = [
   {
     title: "Tokens",
-    body: "Launch and trade memecoins as ERC-20s on Robinhood Chain. Bonding curves handle price discovery from block one.",
+    body: "Launch and trade memecoins as ERC-20s on Robinhood Chain. Instant Uniswap V3 LP is locked from block one.",
     image: "/brand/crypto/coins-frame.jpg",
     href: "/explore",
     crop: "default" as const,
@@ -32,8 +32,8 @@ const TOOLKIT = [
     crop: "default" as const,
   },
   {
-    title: "Curve trades",
-    body: "Buy and sell anytime while bonding. Transparent constant-product math with onchain settlement.",
+    title: "DEX trades",
+    body: "Buy and sell on the locked Uniswap pool. Transparent 1% pool fee plus a hardcoded 2% buy tax.",
     image: "/brand/crypto/component-2.jpg",
     href: "/trade",
     crop: "default" as const,
@@ -63,7 +63,7 @@ const FAQ = [
   },
   {
     q: "What does it cost?",
-    a: "0.0005 ETH to launch, plus gas. Creators earn 1% and PumpRobin takes 0.3% on every bonding-curve trade.",
+    a: "0.004 ETH creation fee plus at least 0.002 ETH LP seed, paid in the signed factory transaction, plus gas. Buys take a 2% token tax (1% creator + 1% platform).",
   },
 ];
 
@@ -81,8 +81,8 @@ export default function TokensPage() {
               Trade memecoins at launchpad cost.
             </h1>
             <p className="text-white/65 text-lg max-w-md mb-8 leading-relaxed">
-              Buy &amp; sell on bonding curves with transparent fees. Launch for 0.0005 ETH —
-              no seed LP, no gatekeepers — on Robinhood Chain.
+              Buy &amp; sell on Uniswap from block one with locked LP. Launch for 0.004 ETH
+              plus a small LP seed — no gatekeepers — on Robinhood Chain.
             </p>
             <RhButton href="/explore" size="lg">
               Get started

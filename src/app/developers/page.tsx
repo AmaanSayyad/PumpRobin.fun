@@ -15,7 +15,7 @@ const ENDPOINTS = [
     method: "GET",
     path: "/api/tokens",
     title: "List tokens",
-    body: "Returns all registered tokens (enriched with curve stats) and recent trades.",
+    body: "Returns PumpRobin launches indexed from confirmed factory transactions, plus recent trades.",
     response: `{
   "tokens": [ /* Token[] */ ],
   "trades": [ /* Trade[] */ ],
@@ -25,33 +25,32 @@ const ENDPOINTS = [
   {
     method: "POST",
     path: "/api/tokens",
-    title: "Create token",
-    body: "Registers a new token in the platform registry. Requires name, symbol, and creator.",
+    title: "Index launch",
+    body: "Indexes a token only after verifying a confirmed PumpRobinFactory.createToken transaction. The creation fee and LP seed must be paid in that tx. Unsigned name/symbol/creator posts are rejected.",
     response: `{
-  "name": "Example",
-  "symbol": "EX",
-  "creator": "0x…",
-  "imageUri": "",
-  "description": ""
+  "txHash": "0x…",
+  "description": "",
+  "metadata": { "twitter": "https://x.com/…" }
 }`,
   },
   {
     method: "GET",
     path: "/api/trades?token=0x…",
     title: "List trades",
-    body: "Optional token query filters trades for a single bonding curve.",
+    body: "Optional token query filters indexed trades for a single launch.",
     response: `{ "trades": [ /* Trade[] */ ] }`,
   },
   {
     method: "POST",
-    path: "/api/trades",
-    title: "Place trade",
-    body: "Simulates/records a buy or sell against the bonding curve. Body: tokenAddress, trader, isBuy, amount.",
+    path: "/api/trades/sync",
+    title: "Index trade",
+    body: "Records a buy or sell after a confirmed on-chain tx (factory, Uniswap router, or FoT seller). Requires txHash. Off-chain simulation is disabled.",
     response: `{
   "tokenAddress": "0x…",
   "trader": "0x…",
   "isBuy": true,
-  "amount": 0.01
+  "ethAmount": 0.01,
+  "txHash": "0x…"
 }`,
   },
   {
@@ -104,15 +103,16 @@ export default function DevelopersPage() {
               PumpRobin Trading API
             </h1>
             <p className="text-rh-muted text-lg leading-relaxed mb-12">
-              Public HTTP endpoints for listing tokens, recording trades, and reading
-              platform analytics — the same surface the PumpRobin UI uses.
+              Public HTTP endpoints for listing indexed launches and reading
+              platform analytics — the same surface the PumpRobin UI uses. Token
+              creation happens on-chain; the API never accepts an unpaid registry write.
             </p>
 
             <section id="introduction" className="mb-14 scroll-mt-24">
               <h2 className="rh-display text-3xl mb-4">Introduction</h2>
               <p className="text-rh-muted leading-relaxed mb-4">
                 Welcome to the PumpRobin.fun API docs for builders. Use these routes to
-                index launches, mirror bonding-curve activity, or power bots and dashboards
+                index launches, mirror Uniswap activity, or power bots and dashboards
                 on Robinhood Chain.
               </p>
               <p className="text-rh-muted leading-relaxed mb-4">
@@ -143,6 +143,14 @@ export default function DevelopersPage() {
                 trades, stats, analytics) require no API key.
               </p>
               <p className="text-rh-muted leading-relaxed mb-4">
+                <code className="text-white/90 text-sm">POST /api/tokens</code> is an indexer,
+                not a mint. Send the <code className="text-white/90 text-sm">txHash</code> of a
+                confirmed <code className="text-white/90 text-sm">PumpRobinFactory.createToken</code>{" "}
+                transaction that paid the creation fee and LP seed. Name, symbol, creator, and
+                token address are taken from the on-chain <code className="text-white/90 text-sm">TokenCreated</code>{" "}
+                event — unsigned JSON is rejected.
+              </p>
+              <p className="text-rh-muted leading-relaxed mb-4">
                 Admin routes (<code className="text-white/90 text-sm">/api/admin/*</code>) use a
                 password session cookie. Set{" "}
                 <code className="text-white/90 text-sm">ADMIN_PASSWORD</code> and{" "}
@@ -154,7 +162,7 @@ export default function DevelopersPage() {
                 <code className="text-white/80">x-api-key</code> /{" "}
                 <code className="text-white/80">x-signature</code> /{" "}
                 <code className="text-white/80">x-timestamp</code> Ed25519 scheme, PumpRobin
-                public trading reads are open; onchain settlement uses your wallet.
+                public reads are open; launches and trades settle in your wallet.
               </p>
             </section>
 
@@ -197,11 +205,11 @@ export default function DevelopersPage() {
               <h2 className="rh-display text-3xl mb-4">Error responses</h2>
               <p className="text-rh-muted leading-relaxed mb-4">
                 Errors return JSON with an <code className="text-white/90 text-sm">error</code>{" "}
-                string and an appropriate HTTP status (400 validation, 401 admin auth, 404
-                missing resource).
+                string and an appropriate HTTP status (400 validation, 401 missing on-chain
+                proof, 404 missing resource, 405 disabled simulation).
               </p>
               <pre className="bg-rh-raised/40 border border-rh-raised p-4 text-xs text-white/80 overflow-x-auto rounded-lg">
-{`{ "error": "name, symbol, and creator are required" }`}
+{`{ "error": "Indexing requires txHash from a confirmed PumpRobinFactory.createToken transaction." }`}
               </pre>
             </section>
 

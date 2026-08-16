@@ -12,7 +12,7 @@ import {
   useWriteContract,
   useWaitForTransactionReceipt,
 } from "wagmi";
-import { decodeEventLog, formatEther, parseEther, type Hash } from "viem";
+import { decodeEventLog, formatEther, isAddress, parseEther, type Hash } from "viem";
 import { waitForTransactionReceipt } from "@wagmi/core";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
 import {
@@ -22,13 +22,12 @@ import {
   ExternalLink,
   Globe,
   ImageIcon,
-  Layers,
   MessageCircle,
-  Percent,
   Plus,
+  Percent,
+  Shield,
   Sparkles,
   Trash2,
-  Users,
   Wallet,
 } from "lucide-react";
 import { RhButton } from "@/components/ui/rh-button";
@@ -85,6 +84,7 @@ type LaunchDraft = {
   communityCoin: boolean;
   communityBoard: boolean;
   maxWallet2pct: boolean;
+  antiSnipe: boolean;
   customSupply: boolean;
   supply: number;
   decimals: number;
@@ -311,6 +311,7 @@ export default function LaunchPage() {
   const [communityCoin, setCommunityCoin] = useState(false);
   const [communityBoard, setCommunityBoard] = useState(false);
   const [maxWallet2pct, setMaxWallet2pct] = useState(false);
+  const [antiSnipe, setAntiSnipe] = useState(false);
   const [featureBoost, setFeatureBoost] = useState(false);
   const [customSupply, setCustomSupply] = useState(false);
   const [supply, setSupply] = useState(DEFAULT_SUPPLY);
@@ -361,7 +362,8 @@ export default function LaunchPage() {
       setCommunityCoin(Boolean(draft.communityCoin));
       setCommunityBoard(Boolean(draft.communityBoard));
       setMaxWallet2pct(Boolean(draft.maxWallet2pct));
-      setCustomSupply(Boolean(draft.customSupply));
+      setAntiSnipe(Boolean(draft.antiSnipe));
+      setCustomSupply(false);
       if (typeof draft.supply === "number" && draft.supply > 0) setSupply(draft.supply);
       if (typeof draft.decimals === "number") setDecimals(draft.decimals);
       setInitialBuyEth(
@@ -402,6 +404,7 @@ export default function LaunchPage() {
         communityCoin,
         communityBoard,
         maxWallet2pct,
+        antiSnipe,
         customSupply,
         supply,
         decimals,
@@ -425,6 +428,7 @@ export default function LaunchPage() {
     communityCoin,
     communityBoard,
     maxWallet2pct,
+    antiSnipe,
     customSupply,
     supply,
     decimals,
@@ -833,11 +837,30 @@ export default function LaunchPage() {
       : [];
 
     if (feeSharing && parsedShares.length === 0) {
-      setError("Add at least one fee-share recipient, or turn fee sharing off.");
+      setError("Add at least one collection address and percent, or turn fee sharing off.");
+      return;
+    }
+    if (feeSharing && parsedShares.some((s) => !isAddress(s.address))) {
+      setError("Each fee-share recipient must be a valid 0x address.");
       return;
     }
     if (feeSharing && Math.abs(feeShareTotalPct - 100) > 0.01) {
       setError("Fee share percentages must add up to 100%.");
+      return;
+    }
+
+    const feeShareBps = feeSharing
+      ? (() => {
+          const bps = parsedShares.map((s) => Math.round(s.pct * 100));
+          const sum = bps.reduce((a, b) => a + b, 0);
+          if (bps.length > 0 && sum !== 10_000) {
+            bps[bps.length - 1] += 10_000 - sum;
+          }
+          return bps;
+        })()
+      : [];
+    if (feeSharing && feeShareBps.some((b) => b <= 0)) {
+      setError("Each recipient percent must be greater than 0.");
       return;
     }
 
@@ -847,6 +870,7 @@ export default function LaunchPage() {
       communityCoin,
       communityBoard,
       instantLaunch: true,
+      antiSnipe,
       maxWallet2pct,
       customSupply,
       supply: effectiveSupply,
@@ -857,84 +881,92 @@ export default function LaunchPage() {
       feeShares: feeSharing ? parsedShares : undefined,
     };
 
-    if (CONTRACTS.factory) {
-      const fee = parseEther(CHAIN_CONFIG.creationFee);
-      const seedWei = parseEther(String(launchInstantSeedEth(buyEthNum)));
+    if (!CONTRACTS.factory) {
+      setError("Factory is not configured — launches must go through PumpRobinFactory.createToken.");
+      return;
+    }
+    const factory = CONTRACTS.factory;
 
-      if (seedWei <= BigInt(0)) {
-        setError(
-          `Launch requires at least ${CHAIN_CONFIG.minInstantSeedEth} ETH LP seed (plus creation fee).`
-        );
-        return;
-      }
+    const fee = parseEther(CHAIN_CONFIG.creationFee);
+    const seedWei = parseEther(String(launchInstantSeedEth(buyEthNum)));
 
-      setStatus("pending");
-      try {
-        // Pay Explore feature boost to collector first (separate from create+buy value)
-        if (featureBoost) {
-          const boostWei = parseEther(CHAIN_CONFIG.featureBoostEth);
-          const boostHash = await sendTransactionAsync({
-            to: FEE_COLLECTOR,
-            value: boostWei,
-          });
-          await waitForTransactionReceipt(wagmiConfig, { hash: boostHash });
-          const until = new Date();
-          until.setDate(until.getDate() + CHAIN_CONFIG.featureBoostDays);
-          metadata.featured = true;
-          metadata.featuredUntil = until.toISOString();
-          metadata.featuredPaidEth = Number(CHAIN_CONFIG.featureBoostEth);
-          metadata.featuredTxHash = boostHash;
-        }
-
-        pendingLaunch.current = {
-          name,
-          symbol,
-          imageUri: imagePreview,
-          description,
-          creator: address,
-          metadata,
-        };
-        registeredTx.current = null;
-        writeContract({
-          address: CONTRACTS.factory,
-          abi: PUMP_ROBIN_FACTORY_ABI,
-          functionName: "createToken",
-          args: [name, symbol, imagePreview, description],
-          value: fee + seedWei,
-        });
-      } catch (err) {
-        setStatus("error");
-        setError(friendlyWalletError(err, "Feature payment or launch failed"));
-      }
+    if (seedWei <= BigInt(0)) {
+      setError(
+        `Launch requires at least ${CHAIN_CONFIG.minInstantSeedEth} ETH LP seed (plus creation fee).`
+      );
       return;
     }
 
     setStatus("pending");
     try {
-      const res = await fetch("/api/tokens", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      // Pay Explore feature boost to collector first (separate from create+buy value)
+      if (featureBoost) {
+        const boostWei = parseEther(CHAIN_CONFIG.featureBoostEth);
+        const boostHash = await sendTransactionAsync({
+          to: FEE_COLLECTOR,
+          value: boostWei,
+        });
+        await waitForTransactionReceipt(wagmiConfig, { hash: boostHash });
+        const until = new Date();
+        until.setDate(until.getDate() + CHAIN_CONFIG.featureBoostDays);
+        metadata.featured = true;
+        metadata.featuredUntil = until.toISOString();
+        metadata.featuredPaidEth = Number(CHAIN_CONFIG.featureBoostEth);
+        metadata.featuredTxHash = boostHash;
+      }
+
+      pendingLaunch.current = {
+        name,
+        symbol,
+        imageUri: imagePreview,
+        description,
+        creator: address,
+        metadata,
+      };
+      registeredTx.current = null;
+
+      let metadataURI = imagePreview;
+      try {
+        const metaRes = await fetch("/api/metadata", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name,
+            symbol,
+            description,
+            image: imagePreview,
+            external_url: `https://pumprobin.fun/token/${name}`,
+            ...pickSocialMetadata(socials),
+          }),
+        });
+        const metaJson = (await metaRes.json()) as { url?: string };
+        if (metaRes.ok && metaJson.url) metadataURI = metaJson.url;
+      } catch {
+        /* image URL still works as metadataURI fallback */
+      }
+
+      writeContract({
+        address: factory,
+        abi: PUMP_ROBIN_FACTORY_ABI,
+        functionName: "createToken",
+        args: [
           name,
           symbol,
-          imageUri: imagePreview,
+          imagePreview,
           description,
-          creator: address,
-          metadata,
-        }),
+          metadataURI,
+          antiSnipe,
+          maxWallet2pct,
+          feeSharing
+            ? parsedShares.map((s) => s.address as `0x${string}`)
+            : [],
+          feeShareBps,
+        ],
+        value: fee + seedWei,
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Launch failed");
-      addToken({
-        ...data.token,
-        createdAt: new Date(data.token.createdAt),
-      });
-      await refreshTokens();
-      setStatus("success");
-      resetForm();
     } catch (err) {
       setStatus("error");
-      setError(friendlyWalletError(err, "Launch failed"));
+      setError(friendlyWalletError(err, "Feature payment or launch failed"));
     }
   };
 
@@ -1114,25 +1146,15 @@ export default function LaunchPage() {
             {/* Launch options */}
             <Panel className="overflow-hidden divide-y divide-white/[0.05]">
               <ToggleRow
-                title="Community coin"
-                description="Fees stream to holders"
-                icon={<Users className="h-4 w-4" />}
-                checked={communityCoin}
-                onChange={setCommunityCoin}
-              />
-              <ToggleRow
-                title="Add a community"
-                description="Holder comment board · needs a banner"
-                icon={<MessageCircle className="h-4 w-4" />}
-                checked={communityBoard}
-                onChange={(v) => {
-                  setCommunityBoard(v);
-                  if (v && !showBanner) setShowBanner(true);
-                }}
+                title="Anti-snipe · first 15 min"
+                description="Buys pay a 99% fee to PumpRobin for 15 minutes after launch. Optional."
+                icon={<Shield className="h-4 w-4" />}
+                checked={antiSnipe}
+                onChange={setAntiSnipe}
               />
               <ToggleRow
                 title="2% max per wallet"
-                description="Caps each wallet at 2%"
+                description="On-chain cap: no wallet can hold more than 2% of supply (pool exempt)."
                 icon={<Wallet className="h-4 w-4" />}
                 checked={maxWallet2pct}
                 onChange={setMaxWallet2pct}
@@ -1145,107 +1167,36 @@ export default function LaunchPage() {
                 onChange={setFeatureBoost}
               />
               <ToggleRow
-                title="Custom supply"
-                description={
-                  customSupply
-                    ? `${formatSupplyShort(effectiveSupply)} total supply`
-                    : "Standard is 1 billion. Turn on to set any amount, 1 to 1Q."
-                }
-                icon={<Layers className="h-4 w-4" />}
-                checked={customSupply}
+                title="Add a community"
+                description="Holder comment board · needs a banner"
+                icon={<MessageCircle className="h-4 w-4" />}
+                checked={communityBoard}
                 onChange={(v) => {
-                  setCustomSupply(v);
-                  if (!v) {
-                    setSupply(DEFAULT_SUPPLY);
-                    setDecimals(defaultDecimalsForSupply(DEFAULT_SUPPLY));
-                    setShowSupplyMenu(false);
-                  }
+                  setCommunityBoard(v);
+                  if (v && !showBanner) setShowBanner(true);
                 }}
               />
-              {customSupply && (
-                <div className="space-y-3 bg-black/20 px-4 py-4">
-                  <div className="relative">
-                    <button
-                      type="button"
-                      onClick={() => setShowSupplyMenu((v) => !v)}
-                      className={cn(fieldClass, "flex items-center justify-between")}
-                    >
-                      <span>
-                        {SUPPLY_PRESETS.find((p) => p.value === supply)?.label ??
-                          `${formatSupplyShort(supply)} custom`}
-                      </span>
-                      <ChevronDown className="h-4 w-4 text-rh-muted" />
-                    </button>
-                    {showSupplyMenu && (
-                      <div className="absolute z-20 mt-1 w-full overflow-hidden rounded-2xl border border-white/10 bg-[#161616] shadow-2xl">
-                        {SUPPLY_PRESETS.map((p) => (
-                          <button
-                            key={p.label}
-                            type="button"
-                            onClick={() => {
-                              setSupply(p.value);
-                              setDecimals(p.decimals);
-                              setShowSupplyMenu(false);
-                            }}
-                            className={cn(
-                              "w-full px-4 py-2.5 text-left text-sm hover:bg-white/5",
-                              supply === p.value && "text-rh-lime"
-                            )}
-                          >
-                            {p.label}
-                            <span className="ml-2 text-rh-dim">{p.decimals} dec</span>
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="mb-1.5 block text-xs text-rh-muted">Supply</label>
-                      <input
-                        type="number"
-                        min={1}
-                        max={1e15}
-                        value={supply}
-                        onChange={(e) => {
-                          const next = Number(e.target.value) || 1;
-                          setSupply(next);
-                          setDecimals(defaultDecimalsForSupply(next));
-                        }}
-                        className={fieldClass}
-                      />
-                    </div>
-                    <div>
-                      <label className="mb-1.5 block text-xs text-rh-muted">
-                        Decimals
-                        <span className="font-normal text-rh-dim"> · from supply</span>
-                      </label>
-                      <input
-                        type="number"
-                        min={0}
-                        max={18}
-                        value={decimals}
-                        readOnly
-                        className={cn(fieldClass, "cursor-default opacity-80")}
-                        title="Set automatically from supply"
-                      />
-                    </div>
-                  </div>
-                </div>
-              )}
             </Panel>
 
-            {/* Fee sharing */}
+            <Panel className="p-4 sm:p-5">
+              <p className="text-[13px] leading-relaxed text-rh-muted">
+                Every buy and sell (GMGN, MetaMask, Axiom, this site) pays{" "}
+                <span className="text-white">1% creator + 1% platform</span>. Creator
+                fees accrue for you to claim anytime. Platform fees auto-send after ~
+                ${CHAIN_CONFIG.feeClaimThresholdUsdHint}.
+              </p>
+            </Panel>
+
             <Panel className="overflow-hidden">
               <ToggleRow
-                title="Fee sharing"
-                description={`Share fees with up to ${CHAIN_CONFIG.maxFeeShareRecipients} creators, apps, or wallets.`}
+                title="Creator fee collection"
+                description={`Send the 1% creator fee to one or more wallets. Percents must add to 100.`}
                 icon={<Percent className="h-4 w-4" />}
                 checked={feeSharing}
                 onChange={(v) => {
                   setFeeSharing(v);
                   if (v && feeShares.length === 0) {
-                    setFeeShares([{ address: "", pct: "" }]);
+                    setFeeShares([{ address: address || "", pct: "100" }]);
                   }
                 }}
               />
@@ -1260,7 +1211,7 @@ export default function LaunchPage() {
                           next[i] = { ...next[i], address: e.target.value };
                           setFeeShares(next);
                         }}
-                        placeholder="0x… wallet"
+                        placeholder="0x… collection address"
                         className={cn(fieldClass, "flex-1 font-mono text-xs")}
                       />
                       <input
@@ -1322,11 +1273,12 @@ export default function LaunchPage() {
                 aria-hidden
                 className="pointer-events-none absolute -right-16 -top-16 h-40 w-40 rounded-full bg-rh-lime/10 blur-3xl"
               />
-              <SectionLabel>LP seed & ownership</SectionLabel>
+              <SectionLabel>LP seed & your bag</SectionLabel>
               <p className="mt-1 text-[13px] text-rh-muted">
-                Every launch seeds Uniswap V3 immediately (min{" "}
-                {CHAIN_CONFIG.minInstantSeedEth} ETH). ~{CHAIN_CONFIG.instantLpEthPct}%
-                locks as LP, ~{100 - CHAIN_CONFIG.instantLpEthPct}% buys tokens for you.
+                Min {CHAIN_CONFIG.minInstantSeedEth} ETH is liquidity only —{" "}
+                <span className="text-white">you receive 0 tokens</span> and 100% of
+                supply goes in the pool. Add extra ETH or tap 1% / 10% / 20% / 30%
+                to buy a bag for your wallet at launch.
               </p>
 
               <div className="relative mt-4">
@@ -1364,18 +1316,17 @@ export default function LaunchPage() {
                     )}
                   </span>
                 </p>
-                {buyEthNum > 0 || ownershipPct != null ? (
+                {receivedPct > 0 ? (
                   <p className="tabular-nums text-rh-lime">
                     You get ≈{" "}
                     {receivedPct < 0.01
                       ? receivedPct.toFixed(4)
                       : receivedPct.toFixed(2)}
-                    % of supply
+                    % of supply in your wallet
                   </p>
                 ) : (
-                  <p className="text-rh-dim">
-                    Min seed {CHAIN_CONFIG.minInstantSeedEth} ETH +{" "}
-                    {CHAIN_CONFIG.creationFee} ETH creation fee
+                  <p className="text-amber-200/90">
+                    Dev wallet gets 0 tokens at this amount
                   </p>
                 )}
               </div>
