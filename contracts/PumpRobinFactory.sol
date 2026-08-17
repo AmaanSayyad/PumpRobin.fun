@@ -18,6 +18,8 @@ contract PumpRobinFactory {
     address public owner;
     address public feeCollector;
     uint256 public creationFee;
+    /// @notice Applied to new launches only; each curve keeps the value it was born with.
+    uint256 public graduationThreshold;
     PumpRobinHook public immutable hook;
     PumpRobinDeployer public immutable deployer;
 
@@ -45,6 +47,8 @@ contract PumpRobinFactory {
     );
     event FeeCollectorUpdated(address indexed previous, address indexed next);
     event CreationFeeUpdated(uint256 previous, uint256 next);
+    event GraduationThresholdUpdated(uint256 previous, uint256 next);
+    event OwnershipTransferred(address indexed previous, address indexed next);
 
     constructor(address feeCollector_, address hook_, address deployer_) {
         require(feeCollector_ != address(0), "Fee collector required");
@@ -55,6 +59,9 @@ contract PumpRobinFactory {
         hook = PumpRobinHook(payable(hook_));
         deployer = PumpRobinDeployer(deployer_);
         creationFee = DEFAULT_CREATION_FEE;
+        // Matches BondingCurve.DEFAULT_GRADUATION_THRESHOLD — the raise that
+        // produces the reference 830M/170M split.
+        graduationThreshold = 5 ether;
     }
 
     /**
@@ -95,7 +102,8 @@ contract PumpRobinFactory {
             msg.sender,
             address(this),
             feeCollector,
-            address(hook)
+            address(hook),
+            graduationThreshold
         );
         bondingCurve = address(curve);
 
@@ -141,11 +149,37 @@ contract PumpRobinFactory {
         if (initialBuy > 0) curve.buyFor{value: initialBuy}(msg.sender, 0);
     }
 
+    /**
+     * @notice Hand the fee-collector and creation-fee controls to another
+     *         address — a multisig or hardware wallet, once the deploy key has
+     *         served its purpose. Two-step would be safer, but a mistyped
+     *         owner here only loses those two setters, not the launches.
+     */
+    function transferOwnership(address next) external {
+        require(msg.sender == owner, "Not owner");
+        require(next != address(0), "Bad owner");
+        emit OwnershipTransferred(owner, next);
+        owner = next;
+    }
+
     function setFeeCollector(address next) external {
         require(msg.sender == owner, "Not owner");
         require(next != address(0), "Fee collector required");
         emit FeeCollectorUpdated(feeCollector, next);
         feeCollector = next;
+    }
+
+    /**
+     * @notice Sets the raise future launches graduate on. Existing coins keep
+     *         the threshold they launched with, so this can never move the goal
+     *         posts on a live curve. Lowering it is how you rehearse the whole
+     *         curve → v4 → fee flow on mainnet without funding a 5 ETH raise.
+     */
+    function setGraduationThreshold(uint256 next) external {
+        require(msg.sender == owner, "Not owner");
+        require(next > 0 && next <= 100 ether, "Bad threshold");
+        emit GraduationThresholdUpdated(graduationThreshold, next);
+        graduationThreshold = next;
     }
 
     function setCreationFee(uint256 next) external {

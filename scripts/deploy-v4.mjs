@@ -34,15 +34,30 @@ const WETH = "0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73";
 const HOOK_FLAGS = 0x2eccn;
 const FLAG_MASK = 0x3fffn;
 
-const key = process.env.PRIVATE_KEY;
+/** Reads a var from .env without pulling in a dotenv dependency. */
+function fromEnvFile(name) {
+  const f = path.join(process.cwd(), ".env");
+  if (!fs.existsSync(f)) return undefined;
+  const m = fs.readFileSync(f, "utf8").match(new RegExp(`^${name}=(.+)$`, "m"));
+  return m?.[1].trim() || undefined;
+}
+
+const key =
+  process.env.PRIVATE_KEY ||
+  process.env.DEPLOYER_PRIVATE_KEY ||
+  fromEnvFile("DEPLOYER_PRIVATE_KEY");
 if (!key) {
-  console.error("PRIVATE_KEY is required");
+  console.error(
+    "No deployer key — run: node scripts/new-deployer-wallet.mjs"
+  );
   process.exit(1);
 }
 const account = privateKeyToAccount(key.startsWith("0x") ? key : `0x${key}`);
 
 const FEE_COLLECTOR =
-  process.env.FEE_COLLECTOR || "0x61F928CBbc9b65C404C3DB42BDe403D78954aDD9";
+  process.env.FEE_COLLECTOR ||
+  fromEnvFile("FEE_COLLECTOR") ||
+  "0x61F928CBbc9b65C404C3DB42BDe403D78954aDD9";
 
 const chain = defineChain({
   id: CHAIN_ID,
@@ -63,11 +78,14 @@ const artifact = (n) => {
   return JSON.parse(fs.readFileSync(f, "utf8"));
 };
 
+let gasUsed = 0n;
+
 async function deploy(name, args = []) {
   const a = artifact(name);
   const hash = await wallet.deployContract({ abi: a.abi, bytecode: a.bytecode, args });
   const receipt = await pub.waitForTransactionReceipt({ hash });
   if (receipt.status !== "success") throw new Error(`${name} deploy reverted`);
+  gasUsed += receipt.gasUsed;
   console.log(`  ${name.padEnd(20)} ${receipt.contractAddress}`);
   return { address: receipt.contractAddress, abi: a.abi };
 }
@@ -81,6 +99,7 @@ async function send(c, functionName, args = []) {
   });
   const receipt = await pub.waitForTransactionReceipt({ hash });
   if (receipt.status !== "success") throw new Error(`${functionName} reverted`);
+  gasUsed += receipt.gasUsed;
   return receipt;
 }
 
@@ -158,6 +177,9 @@ const fee = await pub.readContract({
   functionName: "creationFee",
 });
 console.log(`  creation fee         ${formatEther(fee)} ETH`);
+
+const spent = balance - (await pub.getBalance({ address: account.address }));
+console.log(`  gas used             ${gasUsed.toLocaleString()} (${formatEther(spent)} ETH)`);
 
 console.log(`
 Set these and redeploy the site:

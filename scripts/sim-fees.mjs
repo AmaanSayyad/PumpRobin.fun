@@ -462,5 +462,40 @@ try {
 }
 check("a stranger cannot claim", blocked);
 
+// ---------------------------------------------------------------------------
+console.log("\n== cheap graduation for a mainnet rehearsal ==");
+
+await send(factory, "setGraduationThreshold", [parseEther("0.02")]);
+check(
+  "owner can lower the threshold for new launches",
+  (await read(factory, "graduationThreshold")) === parseEther("0.02")
+);
+check(
+  "existing coins keep the threshold they launched with",
+  (await read(curve, "graduationThreshold")) === parseEther("5")
+);
+
+const cheap = await launchToken("Rehearsal", "RHS", false, false);
+check(
+  "a new launch picks up the lowered threshold",
+  (await read(cheap.curve, "graduationThreshold")) === parseEther("0.02")
+);
+
+await send(cheap.curve, "buy", [0n], trader, parseEther("0.05"));
+check(
+  "graduates on ~0.02 ETH instead of 5",
+  (await read(cheap.curve, "graduated")) === true
+);
+check(
+  "and still mints a real v4 position",
+  (await read(cheap.curve, "poolLiquidity")) > 0n
+);
+
+await send(factory, "setGraduationThreshold", [parseEther("5")]);
+check(
+  "threshold restores to 5 ETH",
+  (await read(factory, "graduationThreshold")) === parseEther("5")
+);
+
 console.log(`\n== ${ok.length} checks passed ==\n`);
 

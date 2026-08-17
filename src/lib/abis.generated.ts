@@ -65,6 +65,25 @@ export const PUMP_ROBIN_FACTORY_ABI = [
     "anonymous": false,
     "inputs": [
       {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "previous",
+        "type": "uint256"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "next",
+        "type": "uint256"
+      }
+    ],
+    "name": "GraduationThresholdUpdated",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
         "indexed": true,
         "internalType": "address",
         "name": "token",
@@ -96,6 +115,25 @@ export const PUMP_ROBIN_FACTORY_ABI = [
       }
     ],
     "name": "LaunchConfigured",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "previous",
+        "type": "address"
+      },
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "next",
+        "type": "address"
+      }
+    ],
+    "name": "OwnershipTransferred",
     "type": "event"
   },
   {
@@ -335,6 +373,19 @@ export const PUMP_ROBIN_FACTORY_ABI = [
   },
   {
     "inputs": [],
+    "name": "graduationThreshold",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
     "name": "hook",
     "outputs": [
       {
@@ -381,6 +432,19 @@ export const PUMP_ROBIN_FACTORY_ABI = [
       }
     ],
     "name": "setFeeCollector",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "next",
+        "type": "uint256"
+      }
+    ],
+    "name": "setGraduationThreshold",
     "outputs": [],
     "stateMutability": "nonpayable",
     "type": "function"
@@ -437,6 +501,19 @@ export const PUMP_ROBIN_FACTORY_ABI = [
     "type": "function"
   },
   {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "next",
+        "type": "address"
+      }
+    ],
+    "name": "transferOwnership",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
     "stateMutability": "payable",
     "type": "receive"
   }
@@ -469,6 +546,11 @@ export const BONDING_CURVE_ABI = [
         "internalType": "address",
         "name": "hook_",
         "type": "address"
+      },
+      {
+        "internalType": "uint256",
+        "name": "graduationThreshold_",
+        "type": "uint256"
       }
     ],
     "stateMutability": "nonpayable",
@@ -644,7 +726,7 @@ export const BONDING_CURVE_ABI = [
   },
   {
     "inputs": [],
-    "name": "FEE_BPS",
+    "name": "DEFAULT_GRADUATION_THRESHOLD",
     "outputs": [
       {
         "internalType": "uint256",
@@ -657,7 +739,7 @@ export const BONDING_CURVE_ABI = [
   },
   {
     "inputs": [],
-    "name": "GRADUATION_THRESHOLD",
+    "name": "FEE_BPS",
     "outputs": [
       {
         "internalType": "uint256",
@@ -931,6 +1013,19 @@ export const BONDING_CURVE_ABI = [
         "internalType": "bool",
         "name": "",
         "type": "bool"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "graduationThreshold",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
       }
     ],
     "stateMutability": "view",

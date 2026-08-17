@@ -44,7 +44,17 @@ contract BondingCurve is ReentrancyGuard, IUnlockCallback {
     uint256 public constant INITIAL_VIRTUAL_ETH = 1_287_878_787_878_787_878;
     uint256 public constant INITIAL_VIRTUAL_TOKENS =
         1_043_787_878_787_878_787_878_787_879;
-    uint256 public constant GRADUATION_THRESHOLD = 5 ether;
+    uint256 public constant DEFAULT_GRADUATION_THRESHOLD = 5 ether;
+
+    /**
+     * @notice Raise required before migrating, snapshotted at launch.
+     * @dev Fixed for the life of the coin — the factory owner can change what
+     *      future launches use, never what an existing one promised. Only the
+     *      default 5 ETH gives the reference 830M/170M split; a lower threshold
+     *      graduates earlier with more supply left for the pool, which is what
+     *      makes an end-to-end mainnet rehearsal affordable.
+     */
+    uint256 public immutable graduationThreshold;
 
     uint256 public constant FEE_BPS = 200;
     uint256 public constant CREATOR_FEE_BPS = 100;
@@ -110,11 +120,14 @@ contract BondingCurve is ReentrancyGuard, IUnlockCallback {
         address creator_,
         address factory_,
         address platformFeeRecipient_,
-        address hook_
+        address hook_,
+        uint256 graduationThreshold_
     ) {
         require(token_ != address(0) && creator_ != address(0), "Bad token/creator");
         require(platformFeeRecipient_ != address(0), "Fee recipient required");
         require(hook_ != address(0), "Hook required");
+        require(graduationThreshold_ > 0, "Bad threshold");
+        graduationThreshold = graduationThreshold_;
         token = PumpRobinToken(token_);
         hook = PumpRobinHook(payable(hook_));
         creator = creator_;
@@ -148,7 +161,7 @@ contract BondingCurve is ReentrancyGuard, IUnlockCallback {
     /// @notice 0–99 while bonding, 100 once migrated.
     function getProgress() public view returns (uint256) {
         if (graduated) return 100;
-        uint256 pct = (realEthReserves * 100) / GRADUATION_THRESHOLD;
+        uint256 pct = (realEthReserves * 100) / graduationThreshold;
         return pct > 99 ? 99 : pct;
     }
 
@@ -206,7 +219,7 @@ contract BondingCurve is ReentrancyGuard, IUnlockCallback {
         // Fill only up to the graduation threshold and hand back the rest, so
         // the curve always sells exactly 830M and the pool always receives the
         // full 170M. Without this cap the crossing buy eats into LP supply.
-        uint256 room = GRADUATION_THRESHOLD - realEthReserves;
+        uint256 room = graduationThreshold - realEthReserves;
         uint256 spend = msg.value;
         bool willGraduate = spend - (spend * feeBps) / 10_000 >= room;
         if (willGraduate) spend = (room * 10_000) / (10_000 - feeBps);
