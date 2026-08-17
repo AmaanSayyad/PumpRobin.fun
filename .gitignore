@@ -19,3 +19,8 @@ broadcast/
 .vercel
 
 .cursor/
+
+# local run logs and deploy scratch
+*.log
+.deploy-artifacts.json
+out/
