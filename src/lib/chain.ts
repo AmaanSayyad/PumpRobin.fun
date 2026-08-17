@@ -104,9 +104,7 @@ export const CHAIN_CONFIG = {
   launchFdvEth: 1.2339,
   /** Spot FDV at the moment the curve graduates. */
   graduationFdvEth: 29.4118,
-  /** No minimum — the curve needs no LP seed. Any first buy is optional. */
-  minInstantSeedEth: "0",
-  /** Bonding-curve + DEX trade fees (1% creator + 1% platform on buys) */
+  /** Charged on the ETH leg of every buy and every sell, on any venue. */
   creatorFeeBps: 100,
   platformFeeBps: 100,
   tradeFeeBps: 200, // 2%

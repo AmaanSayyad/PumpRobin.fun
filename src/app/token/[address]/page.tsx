@@ -51,7 +51,8 @@ import {
   type PendingFees,
 } from "@/lib/curve-trade";
 import { useEthUsd } from "@/lib/use-eth-usd";
-import { ERC20_ABI } from "@/lib/contracts";
+import { readContract } from "@wagmi/core";
+import { CONTRACTS, ERC20_ABI, PUMP_ROBIN_FACTORY_ABI } from "@/lib/contracts";
 import {
   ArrowLeft,
   ArrowUpRight,
@@ -130,6 +131,8 @@ export default function TokenPage({
   const [hasTransferTax, setHasTransferTax] = useState(false);
   const [pendingFees, setPendingFees] = useState<PendingFees | null>(null);
   const [claimBusy, setClaimBusy] = useState(false);
+  /** Curve address straight from the factory — the only source that cannot be stale. */
+  const [factoryCurve, setFactoryCurve] = useState<string | null>(null);
   const ethUsd = useEthUsd();
 
   // Prefer address presence — matches header WalletButton / RainbowKit better than isConnected alone
@@ -307,6 +310,40 @@ export default function TokenPage({
     };
   }, [address]);
 
+  // A coin missing from the local registry is still ours if the factory knows
+  // it. Without this the page treats it as an outside token and charges the
+  // external-swap cut on our own launch.
+  useEffect(() => {
+    const factoryAddress = CONTRACTS.factory;
+    if (!factoryAddress || !address) {
+      setFactoryCurve(null);
+      return;
+    }
+    let cancelled = false;
+    void readContract(wagmiConfig, {
+      address: factoryAddress,
+      abi: PUMP_ROBIN_FACTORY_ABI,
+      functionName: "tokenToCurve",
+      args: [address as Address],
+    })
+      .then((curve) => {
+        const found = curve as Address;
+        if (!cancelled) {
+          setFactoryCurve(
+            found && found !== "0x0000000000000000000000000000000000000000"
+              ? found
+              : null
+          );
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setFactoryCurve(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [address, wagmiConfig]);
+
   useEffect(() => {
     if (!token?.bondingCurve) {
       setUsesFeeRouter(false);
@@ -402,7 +439,7 @@ export default function TokenPage({
             isBuy: tradeMode === "buy",
             amount,
             tokenDecimals: token.metadata?.decimals ?? 18,
-            platformCut: !isPumpRobinLaunch(token),
+            platformCut: !isOurLaunch,
           });
           if (cancelled) return;
           let out = q.amountOutFormatted;
@@ -497,7 +534,7 @@ export default function TokenPage({
           isBuy: tradeMode === "buy",
           amount,
           tokenDecimals: token.metadata?.decimals ?? 18,
-          platformCut: !isPumpRobinLaunch(token),
+          platformCut: !isOurLaunch,
         });
         setAmount("");
         setQuoteOut(null);
@@ -583,7 +620,9 @@ export default function TokenPage({
     );
   }
 
-  const isDexToken = token.source === "market" || !token.bondingCurve;
+  const bondingCurve = token.bondingCurve || factoryCurve || "";
+  const isOurLaunch = isPumpRobinLaunch({ ...token, bondingCurve });
+  const isDexToken = !isOurLaunch;
 
   const poolFromMeta = token.metadata?.uniswapPool || null;
   const supply = token.metadata?.supply ?? DEFAULT_SUPPLY;
@@ -898,7 +937,7 @@ export default function TokenPage({
             <ProgressBar value={token.progress} graduated={token.graduated} />
             <p className="mt-2 text-xs text-rh-dim">
               {token.graduated
-                ? "Live on Uniswap V3 (1% TOKEN/WETH) · LP locked. Stats from pool spot."
+                ? "Live on Uniswap v4 · 2% hook fee · liquidity locked. Stats from pool spot."
                 : `${formatEth(CHAIN_CONFIG.graduationThreshold - token.ethReserves)} ETH until graduation`}
             </p>
           </div>

@@ -9,7 +9,7 @@ const PHASES = [
     status: "current" as const,
     items: [
       "Ship PumpRobin.fun as a memecoin launchpad UI on Robinhood Chain",
-      "Instant Uniswap V3 launches with locked LP",
+      "Bonding-curve launches that graduate into locked Uniswap v4 pools",
       "On-chain creation fee collected in PumpRobinFactory.createToken",
       "Product docs, how-it-works, and developer API surface",
     ],
@@ -20,8 +20,8 @@ const PHASES = [
     status: "current" as const,
     items: [
       "PumpRobinFactory + PumpRobinToken on Robinhood Chain mainnet",
-      "createToken pays 0.004 ETH fee and seeds locked Uniswap V3 LP",
-      "2% hardcoded buy tax (1% creator + 1% platform)",
+      "createToken pays 0.004 ETH fee and deploys the coin with its curve",
+      "2% on every buy and sell, enforced by the v4 hook on any router",
       "Registry indexes only confirmed factory transactions",
     ],
   },

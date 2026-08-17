@@ -26,7 +26,7 @@ const ENDPOINTS = [
     method: "POST",
     path: "/api/tokens",
     title: "Index launch",
-    body: "Indexes a token only after verifying a confirmed PumpRobinFactory.createToken transaction. The creation fee and LP seed must be paid in that tx. Unsigned name/symbol/creator posts are rejected.",
+    body: "Indexes a token only after verifying a confirmed PumpRobinFactory.createToken transaction that paid the creation fee. Unsigned name/symbol/creator posts are rejected.",
     response: `{
   "txHash": "0x…",
   "description": "",
@@ -146,7 +146,7 @@ export default function DevelopersPage() {
                 <code className="text-white/90 text-sm">POST /api/tokens</code> is an indexer,
                 not a mint. Send the <code className="text-white/90 text-sm">txHash</code> of a
                 confirmed <code className="text-white/90 text-sm">PumpRobinFactory.createToken</code>{" "}
-                transaction that paid the creation fee and LP seed. Name, symbol, creator, and
+                transaction that paid the creation fee. Name, symbol, creator, and
                 token address are taken from the on-chain <code className="text-white/90 text-sm">TokenCreated</code>{" "}
                 event — unsigned JSON is rejected.
               </p>

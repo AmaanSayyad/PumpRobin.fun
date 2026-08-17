@@ -19,8 +19,7 @@ export default function TermsPage() {
         <Section title="1. Nature of the Service">
           <p>
             PumpRobin provides non-custodial software infrastructure that lets users create
-            and trade tokens on Robinhood Chain, including instant Uniswap V3 launches with
-            locked liquidity.
+            and trade tokens on Robinhood Chain, including bonding-curve launches that graduate into Uniswap v4 pools with locked liquidity.
           </p>
           <p>
             PumpRobin is not a bank, broker, exchange operator, custodian, investment
@@ -82,9 +81,7 @@ export default function TermsPage() {
         <Section title="5. Non-custodial; liquidity locks">
           <p>You control your wallet. PumpRobin never takes custody of your funds.</p>
           <p>
-            Depending on contract version, Uniswap V3 liquidity may be locked or held in a
-            non-custodial fee collector that can collect and distribute swap fees but cannot
-            withdraw underlying liquidity. Protocol mechanics may change over time; on-chain
+            Uniswap v4 liquidity is minted full-range and the pool's hook rejects every removal, so no party — including PumpRobin — can withdraw the underlying liquidity. Protocol mechanics may change over time; on-chain
             code and explorers are the source of truth.
           </p>
         </Section>

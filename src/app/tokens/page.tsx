@@ -19,7 +19,7 @@ const COST_ROWS = [
 const TOOLKIT = [
   {
     title: "Tokens",
-    body: "Launch and trade memecoins as ERC-20s on Robinhood Chain. Instant Uniswap V3 LP is locked from block one.",
+    body: "Launch and trade memecoins as ERC-20s on Robinhood Chain. Coins start on a bonding curve and graduate into locked Uniswap v4 liquidity.",
     image: "/brand/crypto/coins-frame.jpg",
     href: "/explore",
     crop: "default" as const,
@@ -33,7 +33,7 @@ const TOOLKIT = [
   },
   {
     title: "DEX trades",
-    body: "Buy and sell on the locked Uniswap pool. Transparent 1% pool fee plus a hardcoded 2% buy tax.",
+    body: "Buy and sell on the curve, then on the locked Uniswap v4 pool. A flat 2% on the ETH leg either way — 1% creator, 1% platform.",
     image: "/brand/crypto/component-2.jpg",
     href: "/trade",
     crop: "default" as const,
@@ -63,7 +63,7 @@ const FAQ = [
   },
   {
     q: "What does it cost?",
-    a: "0.004 ETH creation fee plus at least 0.1 ETH LP seed, paid in the signed factory transaction, plus gas. Buys take a 2% token tax (1% creator + 1% platform).",
+    a: "0.004 ETH creation fee, paid in the signed factory transaction, plus gas — there is no liquidity to seed. Every buy and sell then pays 2% of the ETH leg (1% creator + 1% platform).",
   },
 ];
 
@@ -81,8 +81,7 @@ export default function TokensPage() {
               Trade memecoins at launchpad cost.
             </h1>
             <p className="text-white/65 text-lg max-w-md mb-8 leading-relaxed">
-              Buy &amp; sell on Uniswap from block one with locked LP. Launch for 0.004 ETH
-              plus a small LP seed — no gatekeepers — on Robinhood Chain.
+              Trade from block one, graduate into locked Uniswap v4 liquidity. Launch for 0.004 ETH — no gatekeepers — on Robinhood Chain.
             </p>
             <RhButton href="/explore" size="lg">
               Get started

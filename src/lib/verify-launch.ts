@@ -74,12 +74,11 @@ export async function verifyFactoryCreateTx(
     );
   }
 
-  const minValue =
-    parseEther(CHAIN_CONFIG.creationFee) +
-    parseEther(CHAIN_CONFIG.minInstantSeedEth);
-  if (tx.value < minValue) {
+  // A launch pays the creation fee and nothing more — anything above it is the
+  // creator's own first buy on the curve, which is optional.
+  if (tx.value < parseEther(CHAIN_CONFIG.creationFee)) {
     throw new LaunchVerifyError(
-      `Transaction must pay ${CHAIN_CONFIG.creationFee} ETH creation fee plus at least ${CHAIN_CONFIG.minInstantSeedEth} ETH LP seed`
+      `Transaction must pay the ${CHAIN_CONFIG.creationFee} ETH creation fee`
     );
   }
 

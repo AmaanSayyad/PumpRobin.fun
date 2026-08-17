@@ -12,7 +12,7 @@ import { formatCount, formatUsd } from "@/lib/utils";
 const FEATURES = [
   {
     title: "The launchpad for memecoins",
-    body: "Deploy an ERC-20 on Robinhood Chain in one signed factory transaction. Creation fee plus LP seed land on-chain together — Uniswap liquidity is locked from block one.",
+    body: "Deploy an ERC-20 on Robinhood Chain in one signed factory transaction. No liquidity to seed — your coin trades on a curve immediately and graduates into a locked Uniswap v4 pool.",
     href: "/launch",
     cta: "Launch a token",
     image: "/brand/chain/container1-desktop.jpg",
@@ -23,7 +23,7 @@ const FEATURES = [
   },
   {
     title: "Create new ways to trade",
-    body: "Buy and sell on Uniswap V3 from the first block. Price discovery is the pool. Liquidity is locked — not a curve you graduate later.",
+    body: "Every buy and sell pays 1% to the creator and 1% to the platform, on any venue — the pool itself charges it. Liquidity locks forever at graduation.",
     href: "/explore",
     cta: "Explore tokens",
     image: "/brand/chain/speed-desktop.jpg",

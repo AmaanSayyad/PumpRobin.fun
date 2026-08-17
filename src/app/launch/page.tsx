@@ -317,7 +317,7 @@ export default function LaunchPage() {
   const [supply, setSupply] = useState(DEFAULT_SUPPLY);
   const [decimals, setDecimals] = useState(() => defaultDecimalsForSupply(DEFAULT_SUPPLY));
   const [initialBuyEth, setInitialBuyEth] = useState<string>(
-    CHAIN_CONFIG.minInstantSeedEth
+    ""
   );
   const [ownershipPct, setOwnershipPct] = useState<number | null>(null);
   const [feeSharing, setFeeSharing] = useState(false);
@@ -822,7 +822,7 @@ export default function LaunchPage() {
     setCustomSupply(false);
     setSupply(DEFAULT_SUPPLY);
     setDecimals(defaultDecimalsForSupply(DEFAULT_SUPPLY));
-    setInitialBuyEth(CHAIN_CONFIG.minInstantSeedEth);
+    setInitialBuyEth("");
     setOwnershipPct(null);
     setFeeSharing(false);
     setFeeShares([{ address: "", pct: "" }]);
@@ -1008,9 +1008,11 @@ export default function LaunchPage() {
             Launch your coin
           </h1>
           <p className="mt-2 max-w-xl text-[15px] leading-relaxed text-rh-muted">
-            Create + seed Uniswap V3 locked LP in one wallet confirm —{" "}
-            {formatEthWithUsd(Number(CHAIN_CONFIG.creationFee), ethUsd)} creation fee plus
-            min {formatEthWithUsd(Number(CHAIN_CONFIG.minInstantSeedEth), ethUsd)} LP seed.
+            One wallet confirm, {formatEthWithUsd(Number(CHAIN_CONFIG.creationFee), ethUsd)}{" "}
+            creation fee, no liquidity to seed. Your coin trades on a curve from
+            block one and graduates to Uniswap v4 at{" "}
+            {CHAIN_CONFIG.graduationThreshold} ETH raised, with liquidity locked
+            forever.
           </p>
         </header>
 

@@ -13,8 +13,8 @@ import {
 
 const LIFECYCLE = [
   "Create",
-  "Seed LP",
-  "Trade on DEX",
+  "Trade on the curve",
+  "Graduate to Uniswap v4",
   "Locked liquidity",
 ] as const;
 
@@ -78,23 +78,23 @@ const FAQ = [
   },
   {
     q: "Is liquidity rug-pullable?",
-    a: "After launch, the Uniswap V3 LP NFT is sent to the dead address so principal cannot be withdrawn. DYOR on contract addresses and always verify on Blockscout / DEX Screener.",
+    a: "No. Liquidity is minted full-range into the v4 pool and the hook reverts every removal attempt — there is no LP NFT to transfer or unlock. DYOR on contract addresses and always verify on Blockscout / DEX Screener.",
   },
   {
     q: "Can I customize supply?",
-    a: "The live factory mints 1 billion tokens. Custom supply on the form is not wired into createToken yet.",
+    a: "No — supply is fixed at 1 billion. The curve reserves are calibrated to that number, and changing it would break the 830M / 170M split that sets the launch price.",
   },
   {
     q: "How do I earn as a creator?",
-    a: `${CREATOR_FEE_PCT}% creator + ${CHAIN_CONFIG.platformFeeBps / 100}% platform as a hardcoded buy tax on Uniswap transfers (pool → wallet). Fees go straight to the creator wallet and platform wallet — no pause, no blacklist, no admin.`,
+    a: `${CREATOR_FEE_PCT}% of the ETH leg of every buy and every sell, for as long as the coin trades. It accrues on-chain and you claim it whenever you like — the curve holds it before graduation, the pool's hook after. No pause, no blacklist, no admin.`,
   },
   {
     q: "Why doesn't my logo show on GMGN / DEX Screener?",
-    a: "Indexers don't read on-chain imageUri automatically. After launch, submit your logo via DEX Screener's Update Token Info on your token page (manual review, usually 24–72h). PumpRobin stores the IPFS URL on-chain and in our registry.",
+    a: "GMGN and most wallets do read it — they fetch metadataURI from the contract and use its image field, which PumpRobin writes at launch. DEX Screener does not: its logos come from its own CMS, so you have to submit one through Update Token Info on your pair page (manual review, usually 24–72h).",
   },
   {
     q: "What do max wallet and community options do?",
-    a: "Max wallet is an optional launch-form flag stored with the token page. The live factory does not enforce a 2% cap on-chain. Community coin / board are optional social features.",
+    a: "Max wallet is enforced on-chain: with it on, no wallet outside the pool and routers can hold more than 2% of supply. Community coin / board are optional social features.",
   },
 ];
 
@@ -105,8 +105,7 @@ export default function HowItWorksPage() {
       <h1 className="rh-display text-4xl sm:text-5xl mb-4">How it works</h1>
       <p className="text-rh-muted text-[15px] leading-relaxed mb-10 max-w-2xl">
         PumpRobin is a fair-launch pad on Robinhood Chain. Every launch is a signed
-        factory transaction that pays the creation fee and seeds locked Uniswap V3
-        liquidity — live on DEX Screener from block one.
+        factory transaction that pays the creation fee. Coins trade on a bonding curve first, then graduate into a Uniswap v4 pool with liquidity locked for good.
       </p>
 
       <div className="flex flex-wrap gap-2 mb-14">

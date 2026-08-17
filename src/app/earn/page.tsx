@@ -85,8 +85,7 @@ export default function EarnPage() {
               <div className="border border-t-0 border-rh-raised p-6 sm:p-8 flex-1">
                 <h3 className="text-xl font-medium mb-3">Flexible access</h3>
                 <p className="text-rh-muted leading-relaxed">
-                  No lock-ups to launch. Deploy for 0.004 ETH plus LP seed; trading starts
-                  on Uniswap from block one.
+                  No lock-ups to launch. Deploy for 0.004 ETH; trading starts on the curve in the same block.
                 </p>
               </div>
             </div>
@@ -99,9 +98,7 @@ export default function EarnPage() {
           <h2 className="rh-display text-3xl sm:text-4xl mb-4">Creator fees — paid automatically</h2>
           <p className="text-rh-muted text-lg leading-relaxed mb-6">
             On Uniswap buys, <span className="text-rh-lime font-medium">1%</span> goes
-            instantly to the creator wallet and{" "}
-            <span className="text-white">1%</span> to PumpRobin as a hardcoded token tax —
-            no claim step. Uniswap&apos;s 1% pool fee stays with the locked LP NFT.
+            to the creator and{" "} <span className="text-white">1%</span> to PumpRobin, taken on the ETH leg of every buy and sell — on this site or any other. Creator fees accrue on-chain and can be claimed at any time.
           </p>
           <div className="flex flex-wrap justify-center gap-3">
             <RhButton href="/launch" size="lg">

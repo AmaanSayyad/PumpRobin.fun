@@ -282,8 +282,7 @@ export default function AlertsPage() {
             <span className="text-white">
               {CHAIN_CONFIG.platformFeeBps / 100}%
             </span>{" "}
-            goes to PumpRobin — both instantly as a hardcoded token tax. Uniswap pool
-            fees stay with the locked LP NFT.
+            goes to PumpRobin, taken on the ETH leg of every buy and sell. The creator's share accrues until claimed; the platform's forwards itself once it clears ~$30.
           </p>
           <Link
             href="/earn"

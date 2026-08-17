@@ -30,11 +30,11 @@ const TOC = [
 const FAQ = [
   {
     q: "How much does it cost to launch a token?",
-    a: `${CHAIN_CONFIG.creationFee} ETH creation fee plus at least ${CHAIN_CONFIG.minInstantSeedEth} ETH LP seed, paid in the same signed createToken transaction, plus gas.`,
+    a: `${CHAIN_CONFIG.creationFee} ETH creation fee, paid in the signed createToken transaction, plus gas. There is no liquidity to seed.`,
   },
   {
     q: "Where do creator fees go?",
-    a: `Each Uniswap buy takes a ${TRADE_FEE_PCT}% token tax — ${CREATOR_FEE_PCT}% to the creator wallet and ${PLATFORM_FEE_PCT}% to PumpRobin. Both are hardcoded on the token.`,
+    a: `Every buy and every sell pays ${TRADE_FEE_PCT}% of the ETH leg — ${CREATOR_FEE_PCT}% to the creator and ${PLATFORM_FEE_PCT}% to PumpRobin. The bonding curve charges it before graduation and PumpRobinHook charges it on the v4 pool after, so it applies on any router.`,
   },
   {
     q: "Do I need to deploy my own API?",
@@ -42,15 +42,15 @@ const FAQ = [
   },
   {
     q: "Are launches on-chain today?",
-    a: "Yes. PumpRobinFactory.createToken deploys the token, takes the creation fee, and seeds locked Uniswap V3 liquidity in one transaction.",
+    a: "Yes. PumpRobinFactory.createToken deploys the token and its bonding curve and takes the creation fee in one transaction. The Uniswap v4 pool is created later, automatically, when the curve reaches its graduation raise.",
   },
   {
     q: "Where is Uniswap liquidity?",
-    a: `At create time the factory wraps the seed into a Uniswap V3 TOKEN/WETH pool at the 1% fee tier and locks the LP NFT at the dead address. The token page routes trades via the Uniswap Trading API.`,
+    a: `There is none at create time — the coin trades on a bonding curve first. At ${CHAIN_CONFIG.graduationThreshold} ETH raised the curve moves the remaining ${CHAIN_CONFIG.poolSupply.toLocaleString()} tokens and the full raise into a Uniswap v4 TOKEN/WETH pool. The position is minted full-range and the hook rejects every removal, so it cannot be withdrawn.`,
   },
   {
     q: "Are fees transparent?",
-    a: `Yes — ${CHAIN_CONFIG.creationFee} ETH creation fee at launch, ${TRADE_FEE_PCT}% buy tax (${CREATOR_FEE_PCT}% creator + ${PLATFORM_FEE_PCT}% platform), and Uniswap's 1% pool fee on the locked LP.`,
+    a: `Yes — ${CHAIN_CONFIG.creationFee} ETH once at launch, then ${TRADE_FEE_PCT}% on the ETH leg of every trade (${CREATOR_FEE_PCT}% creator + ${PLATFORM_FEE_PCT}% platform). Nothing else.`,
   },
 ];
 
@@ -110,10 +110,10 @@ export default function DocsPage() {
             <p className="text-rh-muted leading-relaxed text-[15px] mb-4">
               PumpRobin is a fair-launch pad for Robinhood Chain. Every new token is
               created on-chain: the factory takes a {CHAIN_CONFIG.creationFee} ETH
-              creation fee and immediately seeds a locked Uniswap V3 TOKEN/WETH pool.
+              creation fee and deploys the coin with its bonding curve.
             </p>
             <p className="text-xs text-rh-dim">
-              Flow: Sign createToken → Pay fee + LP seed → Locked Uniswap pool → Trade on DEX
+              Flow: Sign createToken → Trade on the curve → Auto-graduate to Uniswap v4 → Liquidity locked
             </p>
           </section>
 
@@ -126,7 +126,7 @@ export default function DocsPage() {
                 <h3 className="text-lg font-medium mb-2">What is PumpRobin.fun?</h3>
                 <p className="text-rh-muted leading-relaxed text-[15px]">
                   A permissionless token launchpad on Robinhood Chain. Launch ERC-20s with
-                  instant locked Uniswap V3 liquidity — similar in spirit to pump.fun,
+                  a bonding curve that graduates into locked Uniswap v4 liquidity,
                   built for an EVM L2.
                 </p>
               </div>
@@ -143,11 +143,7 @@ export default function DocsPage() {
               <div>
                 <h3 className="text-lg font-medium mb-2">What does a launch cost?</h3>
                 <p className="text-rh-muted leading-relaxed text-[15px]">
-                  {CHAIN_CONFIG.creationFee} ETH creation fee plus at least{" "}
-                  {CHAIN_CONFIG.minInstantSeedEth} ETH LP seed, paid in the signed
-                  factory transaction, plus gas. Buys take a {TRADE_FEE_PCT}% token tax
-                  ({CREATOR_FEE_PCT}% creator + {PLATFORM_FEE_PCT}% platform). Uniswap
-                  pool fee is 1%.
+                  {CHAIN_CONFIG.creationFee} ETH creation fee, paid in the signed factory transaction, plus gas. No liquidity to seed. Every buy and sell then pays {TRADE_FEE_PCT}% of the ETH leg ({CREATOR_FEE_PCT}% creator + {PLATFORM_FEE_PCT}% platform), on any venue.
                 </p>
               </div>
             </div>
@@ -172,17 +168,13 @@ export default function DocsPage() {
               <div>
                 <h3 className="text-lg font-medium mb-2">Locked liquidity</h3>
                 <p className="text-rh-muted leading-relaxed text-[15px]">
-                  The Uniswap V3 TOKEN/WETH pool uses the 1% fee tier. The LP NFT is sent
-                  to the dead address so principal cannot be withdrawn. The token then
-                  trades like other Robinhood pairs on DEX Screener.
+                  The Uniswap v4 TOKEN/WETH pool carries PumpRobinHook, which takes 2% of the ETH leg of every swap and reverts every liquidity removal, so principal cannot be withdrawn. The token trades like any other Robinhood pair on DEX Screener and GMGN.
                 </p>
               </div>
               <div>
                 <h3 className="text-lg font-medium mb-2">Creator fees</h3>
                 <p className="text-rh-muted leading-relaxed text-[15px]">
-                  Buys take a {TRADE_FEE_PCT}% token tax — {CREATOR_FEE_PCT}% to the
-                  creator wallet and {PLATFORM_FEE_PCT}% to PumpRobin, hardcoded on the
-                  token with no admin.
+                  Every buy and every sell pays {TRADE_FEE_PCT}% of the ETH leg — {CREATOR_FEE_PCT}% to the creator and {PLATFORM_FEE_PCT}% to PumpRobin. The token itself is a plain ERC-20 with no transfer tax and no admin.
                 </p>
               </div>
             </div>
@@ -280,11 +272,11 @@ export default function DocsPage() {
             </h2>
             <div className="rounded-2xl bg-rh-raised overflow-hidden text-sm">
               <Row k="createFee" v={`${CHAIN_CONFIG.creationFee} ETH`} />
-              <Row k="Min LP seed" v={`${CHAIN_CONFIG.minInstantSeedEth} ETH`} />
-              <Row k="Buy tax" v={`${TRADE_FEE_PCT}% (${CREATOR_FEE_PCT}% creator + ${PLATFORM_FEE_PCT}% platform)`} />
-              <Row k="Uniswap V3 fee" v="1% (10000) TOKEN/WETH" />
+              <Row k="Graduation raise" v={`${CHAIN_CONFIG.graduationThreshold} ETH`} />
+              <Row k="Trade fee (buy and sell)" v={`${TRADE_FEE_PCT}% (${CREATOR_FEE_PCT}% creator + ${PLATFORM_FEE_PCT}% platform)`} />
+              <Row k="Uniswap pool" v="v4 dynamic fee · PumpRobinHook" />
               <Row k="TOTAL_SUPPLY (factory)" v={DEFAULT_SUPPLY.toLocaleString()} />
-              <Row k="LP NFT" v="Locked at dead address" />
+              <Row k="Liquidity" v="Full-range, removal reverts" />
             </div>
           </section>
 

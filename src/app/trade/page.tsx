@@ -8,15 +8,15 @@ import { MediaFrame, SplitBlock, BleedHero } from "@/components/ui/media-frame";
 const STAGES = [
   {
     stage: "Launch",
-    fee: "0.004 ETH + seed",
-    liquidity: "Uniswap V3 LP",
+    fee: "0.004 ETH",
+    liquidity: "Bonding curve",
     trading: "Instant",
     settlement: "Factory tx",
   },
   {
     stage: "Locked pool",
-    fee: "1% Uniswap + 2% buy tax",
-    liquidity: "LP NFT at dead address",
+    fee: "2% on the ETH leg, any router",
+    liquidity: "Full-range, removal reverts",
     trading: "24/7 onchain",
     settlement: "TOKEN/WETH",
   },
@@ -32,7 +32,7 @@ const STAGES = [
 const FEATURES = [
   {
     title: "Enjoy low launch fees",
-    body: "Deploy an ERC-20 on Robinhood Chain for 0.004 ETH plus a small LP seed. Uniswap liquidity is locked in the same signed transaction.",
+    body: "Deploy an ERC-20 on Robinhood Chain for 0.004 ETH. Nothing to seed — the curve carries the whole supply until it graduates into locked Uniswap v4 liquidity.",
     media: (
       <MediaFrame aspect="wide">
         <video
