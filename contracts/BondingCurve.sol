@@ -197,8 +197,18 @@ contract BondingCurve is ReentrancyGuard, IUnlockCallback {
         require(msg.value > 0, "No ETH sent");
 
         bool antiSnipe = token.isAntiSnipeActive();
-        uint256 fee = (msg.value * (antiSnipe ? ANTI_SNIPE_BPS : FEE_BPS)) / 10_000;
-        uint256 ethAfterFee = msg.value - fee;
+        uint256 feeBps = antiSnipe ? ANTI_SNIPE_BPS : FEE_BPS;
+
+        // Fill only up to the graduation threshold and hand back the rest, so
+        // the curve always sells exactly 830M and the pool always receives the
+        // full 170M. Without this cap the crossing buy eats into LP supply.
+        uint256 room = GRADUATION_THRESHOLD - realEthReserves;
+        uint256 spend = msg.value;
+        bool willGraduate = spend - (spend * feeBps) / 10_000 >= room;
+        if (willGraduate) spend = (room * 10_000) / (10_000 - feeBps);
+
+        uint256 fee = (spend * feeBps) / 10_000;
+        uint256 ethAfterFee = spend - fee;
 
         uint256 tokenAmount = _calculateBuyReturn(ethAfterFee);
         require(tokenAmount >= minTokens, "Slippage exceeded");
@@ -213,9 +223,15 @@ contract BondingCurve is ReentrancyGuard, IUnlockCallback {
 
         if (fee > 0) _accumulateFee(fee, antiSnipe);
 
-        emit Trade(recipient, true, msg.value, tokenAmount, getPrice());
+        emit Trade(recipient, true, spend, tokenAmount, getPrice());
 
-        if (realEthReserves >= GRADUATION_THRESHOLD) _migrateToV4();
+        uint256 refund = msg.value - spend;
+        if (refund > 0) {
+            (bool sent, ) = recipient.call{value: refund}("");
+            require(sent, "Refund failed");
+        }
+
+        if (willGraduate) _migrateToV4();
     }
 
     function _calculateBuyReturn(uint256 ethAmount) internal view returns (uint256) {
