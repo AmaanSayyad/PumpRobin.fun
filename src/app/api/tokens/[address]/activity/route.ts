@@ -22,7 +22,7 @@ export async function GET(
   if (!pool && token?.bondingCurve) {
     try {
       const live = await readBondingCurveOnChain(token.bondingCurve as Address);
-      pool = live.uniswapPool;
+      pool = live.poolId;
     } catch {
       pool = null;
     }

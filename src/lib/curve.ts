@@ -1,9 +1,13 @@
 import { CHAIN_CONFIG } from "./chain";
 
-/** Matches PumpRobinFactory / BondingCurve virtual reserve init (1B default supply).
- *  Calibrated to bags.fm Robinhood (~1.3 ETH virtual → ~$2.3k start FDV). */
-export const INITIAL_VIRTUAL_ETH = 1.3;
-export const INITIAL_VIRTUAL_TOKENS = 1_073_000_000;
+/**
+ * Mirrors BondingCurve.sol. Read off the reference Robinhood launchpad rather
+ * than approximated: with these reserves the curve sells exactly 830M of the 1B
+ * supply by the 5 ETH graduation threshold, opening at 1.2339 ETH FDV.
+ * See scripts/check-curve.mjs.
+ */
+export const INITIAL_VIRTUAL_ETH = 1.287878787878787878;
+export const INITIAL_VIRTUAL_TOKENS = 1_043_787_878.787_878_787_9;
 export const DEFAULT_SUPPLY = 1_000_000_000;
 
 function supplyRatio(supply: number): number {
@@ -93,7 +97,7 @@ export function applyFee(ethAmount: number, feeBps = CHAIN_CONFIG.tradeFeeBps) {
 }
 
 /**
- * ETH to send (incl. 1.3% fee) to receive ~`pct`% of total supply on the bonding curve.
+ * ETH to send (incl. the 2% trade fee) for ~`pct`% of supply on the curve.
  */
 export function ethInForSupplyPercent(pct: number, supply = DEFAULT_SUPPLY): number {
   if (!Number.isFinite(pct) || pct <= 0) return 0;
@@ -125,8 +129,8 @@ export function supplyPercentForEthIn(
 }
 
 /**
- * Min ETH in wallet: creation fee + LP seed + gas (+ feature).
- * All launches seed Uniswap immediately (min seed applies).
+ * Min ETH in wallet: creation fee + gas (+ feature) + any optional first buy.
+ * There is no LP seed — the curve carries the whole supply until graduation.
  */
 export function minEthToLaunch(
   initialBuyEth = 0,
@@ -135,9 +139,7 @@ export function minEthToLaunch(
   const creation = Number(CHAIN_CONFIG.creationFee);
   const buffer = Number(CHAIN_CONFIG.launchGasBufferEth);
   const feature = featureBoost ? Number(CHAIN_CONFIG.featureBoostEth) : 0;
-  const buy = Math.max(0, Number.isFinite(initialBuyEth) ? initialBuyEth : 0);
-  const seed = Math.max(minInstantSeedEth(), buy);
-  return creation + seed + buffer + feature;
+  return creation + launchBuyEth(initialBuyEth) + buffer + feature;
 }
 
 /** ETH attached above creation fee for the optional creator buy on the curve. */
@@ -146,116 +148,14 @@ export function launchBuyEth(initialBuyEth = 0): number {
   return Math.max(0, n);
 }
 
-/** @deprecated Use launchBuyEth — kept for older imports */
-export function launchSeedEth(initialBuyEth = 0): number {
-  return launchBuyEth(initialBuyEth);
-}
-
-/** How instant launch splits seed ETH (matches BondingCurve.sol). */
-export function splitInstantSeed(seedEth: number): {
-  lpEth: number;
-  buyEth: number;
-} {
-  if (!Number.isFinite(seedEth) || seedEth <= 0) {
-    return { lpEth: 0, buyEth: 0 };
-  }
-  const minSeed = minInstantSeedEth();
-  if (seedEth <= minSeed) {
-    return { lpEth: seedEth, buyEth: 0 };
-  }
-  const lpPct = CHAIN_CONFIG.instantLpEthPct / 100;
-  const lpEth = seedEth * lpPct;
-  const buyEth = seedEth - lpEth;
-  return { lpEth, buyEth };
-}
-
-/** LP supply bps — Bags-style launches put 100% of supply in the pool. */
-export function lpSupplyBpsForLpEth(_lpEth: number): number {
-  return 10_000;
-}
-
-/** Estimated starting FDV in ETH for an instant launch seed. */
-export function estimatedInstantFdvEth(seedEth: number): number {
-  const { lpEth } = splitInstantSeed(seedEth);
-  return lpEth;
-}
-
-/** % of total supply that enters the Uniswap pool at launch. */
-export function instantLpSupplyPct(seedEth: number): number {
-  const { lpEth } = splitInstantSeed(seedEth);
-  return lpSupplyBpsForLpEth(lpEth) / 100;
-}
-
-/** Min seed ETH (excl. creation fee) for instant Uniswap launch. */
-export function minInstantSeedEth(): number {
-  return Number(CHAIN_CONFIG.minInstantSeedEth);
-}
-
-/** Seed ETH for instant launch — never below min instant liquidity. */
-export function launchInstantSeedEth(initialBuyEth = 0): number {
-  const minSeed = minInstantSeedEth();
-  const n = Number.isFinite(initialBuyEth) ? initialBuyEth : 0;
-  return Math.max(minSeed, n);
-}
-
-/** Creator's share of the pool after the instant Uniswap buy (~30% of seed). */
-function instantBuyShareOfLp(): number {
-  const lpFrac = CHAIN_CONFIG.instantLpEthPct / 100;
-  const buyFrac = 1 - lpFrac;
-  const denom = lpFrac + buyFrac;
-  return denom > 0 ? buyFrac / denom : 0;
-}
-
-/** Max % of total supply a creator buy can receive (hits max LP bps). */
-export function maxInstantOwnershipPct(): number {
-  return (CHAIN_CONFIG.instantMaxLpSupplyBps / 100) * instantBuyShareOfLp();
-}
-
-/**
- * Instant launch: % of total supply the creator buy receives (of full 1B).
- * Uses constant-product: tokensOut ≈ lpTokens * buyEth / (lpEth + buyEth).
- */
-export function supplyPercentForInstantSeed(
-  seedEth: number,
-  _supply = DEFAULT_SUPPLY
-): number {
-  const { lpEth, buyEth } = splitInstantSeed(seedEth);
-  if (buyEth <= 0 || lpEth <= 0) return 0;
-  const bps = lpSupplyBpsForLpEth(lpEth);
-  const boughtOfLp = buyEth / (lpEth + buyEth);
-  return Math.min(100, (bps / 100) * boughtOfLp);
-}
-
-export function ethInForInstantSupplyPercent(
-  pct: number,
-  _supply = DEFAULT_SUPPLY
-): number {
-  const minSeed = minInstantSeedEth();
-  if (!Number.isFinite(pct) || pct <= 0) return minSeed;
-
-  const buyShare = instantBuyShareOfLp();
-  const maxPct = maxInstantOwnershipPct();
-  if (buyShare <= 0 || maxPct <= 0) return minSeed;
-
-  const target = Math.min(pct, maxPct);
-  const targetBps = (target / buyShare) * 100;
-  const lpFrac = CHAIN_CONFIG.instantLpEthPct / 100;
-  const targetFdv = Number(CHAIN_CONFIG.instantTargetFdvEth);
-  if (lpFrac <= 0 || targetFdv <= 0) return minSeed;
-
-  // bps = (seed * lpFrac * 10_000) / targetFdv  →  seed = bps * targetFdv / (lpFrac * 10_000)
-  const seed = (targetBps * targetFdv) / (lpFrac * 10_000);
-  return Math.max(minSeed, seed);
-}
-
-/** % price impact of an ETH buy against pooled WETH (Uniswap v3 1% fee). */
+/** % price impact of an ETH buy against pooled WETH, after the 2% hook fee. */
 export function uniswapBuyImpactPct(buyEth: number, pooledWeth: number): number {
   if (!(buyEth > 0) || !(pooledWeth > 0)) return 0;
-  const xin = buyEth * 0.99;
+  const xin = buyEth * (1 - CHAIN_CONFIG.tradeFeeBps / 10_000);
   return (xin / (pooledWeth + xin)) * 100;
 }
 
-/** Approx Uniswap V3 full-range swap (constant product + pool fee). */
+/** Approx full-range v4 swap (constant product + the hook's 2%). */
 export function quotePoolSwap(opts: {
   isBuy: boolean;
   amountIn: number;
@@ -271,10 +171,3 @@ export function quotePoolSwap(opts: {
   return (pooledWeth * xin) / (pooledToken + xin);
 }
 
-/** @deprecated Instant Uniswap seed removed — bonding curve only until graduation */
-export function splitLaunchSeed(seedEth: number): {
-  lpEth: number;
-  buyEth: number;
-} {
-  return { lpEth: 0, buyEth: seedEth };
-}

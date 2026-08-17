@@ -88,19 +88,24 @@ export const CHAIN_CONFIG = {
   alertsSubEth: "0.028",
   alertsSubUsdHint: 50,
   alertsSubDays: 30,
-  /** ETH raised on the bonding curve before auto-graduation to Uniswap V3 */
-  graduationThreshold: 8,
-  /** Min ETH seed for instant Uniswap launch (~$250 at $2.5k ETH). */
-  minInstantSeedEth: "0.1",
-  minInstantSeedUsdHint: 250,
-  /** Target starting FDV — contract puts fewer tokens in LP when seed is small */
-  instantTargetFdvEth: 2,
-  instantMinLpSupplyBps: 5,
-  instantMaxLpSupplyBps: 10_000,
-  /** @deprecated Use dynamic lpSupplyBps — max cap only */
-  instantLpSupplyPct: 100,
-  /** % of seed ETH that locks as LP when the creator also takes a first buy */
-  instantLpEthPct: 70,
+  /** ETH raised on the bonding curve before auto-graduation to Uniswap v4 */
+  graduationThreshold: 5,
+  /**
+   * Curve constants, matched to the reference Robinhood launchpad so a
+   * PumpRobin coin opens at the same price and graduates on the same raise.
+   * Verified on-chain: these reserves sell exactly 830M by the 5 ETH threshold.
+   */
+  curveVirtualEth: "1.287878787878787878",
+  curveVirtualTokens: "1043787878787878.787878787879",
+  /** Tokens sold on the curve, and the remainder that seeds the v4 pool. */
+  curveSupply: 830_000_000,
+  poolSupply: 170_000_000,
+  /** Spot FDV the moment a coin launches, before any buy. */
+  launchFdvEth: 1.2339,
+  /** Spot FDV at the moment the curve graduates. */
+  graduationFdvEth: 29.4118,
+  /** No minimum — the curve needs no LP seed. Any first buy is optional. */
+  minInstantSeedEth: "0",
   /** Bonding-curve + DEX trade fees (1% creator + 1% platform on buys) */
   creatorFeeBps: 100,
   platformFeeBps: 100,

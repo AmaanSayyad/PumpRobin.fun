@@ -22,57 +22,59 @@ const STEPS = [
   {
     n: "01",
     title: "Create your token",
-    body: `Connect your wallet and set name, ticker, image, description, and optional socials. Default supply is ${DEFAULT_SUPPLY.toLocaleString()} tokens. Min LP seed: ${CHAIN_CONFIG.minInstantSeedEth} ETH. Creation fee: ${CHAIN_CONFIG.creationFee} ETH.`,
+    body: `Connect your wallet and set name, ticker, image, description, and optional socials. Supply is ${DEFAULT_SUPPLY.toLocaleString()} tokens. Creation fee: ${CHAIN_CONFIG.creationFee} ETH — no LP seed needed. Any extra ETH becomes your first buy.`,
   },
   {
     n: "02",
-    title: "Instant Uniswap V3 LP",
-    body: `Every launch seeds a Uniswap V3 TOKEN/WETH pool immediately. ~${CHAIN_CONFIG.instantLpEthPct}% of your seed locks as LP; the rest buys tokens for you. LP supply scales with seed size so small launches stay expensive. Excess supply is burned.`,
+    title: "Trade on the curve",
+    body: `Your coin opens at ${CHAIN_CONFIG.launchFdvEth} ETH market cap and trades on a bonding curve. ${CHAIN_CONFIG.curveSupply.toLocaleString()} of the ${DEFAULT_SUPPLY.toLocaleString()} supply sells here — no liquidity to seed, no price to set.`,
   },
   {
     n: "03",
-    title: "Trade on DEX",
-    body: "Trading happens on Uniswap V3 from block one — GMGN, DEX Screener, and PumpRobin all route through the locked pool. Uniswap pool fee is 1% (TOKEN/WETH tier used on Robinhood memecoins).",
+    title: "Graduate to Uniswap v4",
+    body: `Once the curve raises ${CHAIN_CONFIG.graduationThreshold} ETH the coin migrates automatically: the remaining ${CHAIN_CONFIG.poolSupply.toLocaleString()} tokens plus the entire raise go into a Uniswap v4 pool at roughly ${CHAIN_CONFIG.graduationFdvEth} ETH market cap.`,
   },
   {
     n: "04",
-    title: "Liquidity locked",
-    body: "The LP NFT is sent to the dead address so principal cannot be withdrawn. Verify pool + lock on Blockscout and DEX Screener.",
+    title: "Liquidity locked, fees enforced",
+    body: `Liquidity can never be pulled — the pool's hook rejects every removal. That same hook charges ${CHAIN_CONFIG.tradeFeeBps / 100}% on the ETH side of every buy and sell, whether the trade comes from PumpRobin, Uniswap, MetaMask, GMGN or Axiom.`,
   },
 ];
 
 const TOKENOMICS = [
-  { label: "Default supply", value: "1B" },
-  { label: "Min LP seed", value: `${CHAIN_CONFIG.minInstantSeedEth} ETH` },
-  { label: "Target start FDV", value: `${CHAIN_CONFIG.instantTargetFdvEth} ETH` },
-  { label: "Pool fee", value: "1% Uniswap" },
+  { label: "Supply", value: "1B" },
+  { label: "Sold on curve", value: `${CHAIN_CONFIG.curveSupply / 1e6}M` },
+  { label: "Into the pool", value: `${CHAIN_CONFIG.poolSupply / 1e6}M` },
+  { label: "Launch market cap", value: `${CHAIN_CONFIG.launchFdvEth} ETH` },
+  { label: "Graduates at", value: `${CHAIN_CONFIG.graduationThreshold} ETH raised` },
+  { label: "Trade fee", value: `${CHAIN_CONFIG.tradeFeeBps / 100}% everywhere` },
 ];
 
 const FEES = [
   {
     title: "Token creation",
-    detail: "Paid once at launch (+ min LP seed + gas)",
+    detail: "Paid once at launch (+ gas)",
     value: `${CHAIN_CONFIG.creationFee} ETH`,
   },
   {
-    title: "Uniswap pool",
-    detail: "1% TOKEN/WETH · LP NFT locked at dead address",
-    value: "1% tier",
+    title: "Every buy and every sell",
+    detail: `${CHAIN_CONFIG.creatorFeeBps / 100}% to the creator, ${CHAIN_CONFIG.platformFeeBps / 100}% to PumpRobin — charged on-chain, on any venue`,
+    value: `${CHAIN_CONFIG.tradeFeeBps / 100}%`,
   },
 ];
 
 const FAQ = [
   {
     q: "What is PumpRobin.fun?",
-    a: "A fair-launch memecoin launchpad on Robinhood Chain. Launch an ERC-20 with instant Uniswap V3 locked LP — live on DEX Screener and GMGN from block one.",
+    a: "A fair-launch memecoin launchpad on Robinhood Chain. Launch an ERC-20 that trades on a bonding curve, then graduates into a Uniswap v4 pool with permanently locked liquidity — indexed by DEX Screener and GMGN.",
   },
   {
     q: "How does launch work?",
-    a: `Pay ${CHAIN_CONFIG.creationFee} ETH creation fee plus at least ${CHAIN_CONFIG.minInstantSeedEth} ETH LP seed. ~${CHAIN_CONFIG.instantLpEthPct}% seeds locked Uniswap liquidity; the rest buys tokens for you. Excess supply is burned.`,
+    a: `Pay the ${CHAIN_CONFIG.creationFee} ETH creation fee and you are live — there is no liquidity to seed. ${CHAIN_CONFIG.curveSupply.toLocaleString()} tokens sell on the curve; at ${CHAIN_CONFIG.graduationThreshold} ETH raised the remaining ${CHAIN_CONFIG.poolSupply.toLocaleString()} and the whole raise move into Uniswap v4. Any ETH you send above the fee buys your own first bag.`,
   },
   {
     q: "What fees does PumpRobin charge?",
-    a: `${CHAIN_CONFIG.creationFee} ETH creation fee at launch. Trades happen on Uniswap (1% pool fee). Network gas is separate.`,
+    a: `${CHAIN_CONFIG.creationFee} ETH once at launch, then ${CHAIN_CONFIG.tradeFeeBps / 100}% on the ETH side of every trade — ${CHAIN_CONFIG.creatorFeeBps / 100}% to the creator and ${CHAIN_CONFIG.platformFeeBps / 100}% to PumpRobin. The pool's hook takes it on-chain, so it applies on Uniswap, MetaMask, GMGN and Axiom too, not only here. Network gas is separate.`,
   },
   {
     q: "Is liquidity rug-pullable?",

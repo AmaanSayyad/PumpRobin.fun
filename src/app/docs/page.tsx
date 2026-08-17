@@ -157,12 +157,16 @@ export default function DocsPage() {
             <h2 className="text-sm uppercase tracking-wider text-rh-dim mb-6">Mechanics</h2>
             <div className="space-y-8">
               <div>
-                <h3 className="text-lg font-medium mb-2">Instant Uniswap pool</h3>
+                <h3 className="text-lg font-medium mb-2">Curve, then Uniswap v4</h3>
                 <p className="text-rh-muted leading-relaxed text-[15px]">
-                  createToken deploys the ERC-20, forwards the creation fee, and calls
-                  seedInstantUniswap with the remaining ETH. ~{CHAIN_CONFIG.instantLpEthPct}%
-                  of the seed locks as LP; the rest buys tokens for the creator. Excess
-                  supply is burned.
+                  createToken deploys the ERC-20 and its bonding curve, forwards the
+                  creation fee, and spends any remaining ETH on the curve as the
+                  creator&apos;s first buy. The curve sells{" "}
+                  {CHAIN_CONFIG.curveSupply.toLocaleString()} tokens; at{" "}
+                  {CHAIN_CONFIG.graduationThreshold} ETH raised it migrates the
+                  remaining {CHAIN_CONFIG.poolSupply.toLocaleString()} and the whole
+                  raise into a Uniswap v4 pool whose hook locks the liquidity and
+                  charges {CHAIN_CONFIG.tradeFeeBps / 100}% on every swap.
                 </p>
               </div>
               <div>

@@ -8,23 +8,27 @@ export const TRADE_FEE_PCT = CHAIN_CONFIG.tradeFeeBps / 100;
 export const LAUNCH_MECHANICS = [
   {
     title: "On-chain create + fee",
-    body: `Launch is a signed PumpRobinFactory.createToken transaction. It must pay ${CHAIN_CONFIG.creationFee} ETH creation fee plus at least ${CHAIN_CONFIG.minInstantSeedEth} ETH LP seed in that same tx. The API only indexes a confirmed factory receipt — it cannot mint a token from unsigned JSON.`,
+    body: `Launch is a signed PumpRobinFactory.createToken transaction paying the ${CHAIN_CONFIG.creationFee} ETH creation fee. No LP seed is required. The API only indexes a confirmed factory receipt — it cannot mint a token from unsigned JSON.`,
   },
   {
-    title: "Instant Uniswap V3 LP",
-    body: `Every new launch seeds a Uniswap V3 TOKEN/WETH pool at the 1% fee tier immediately. ~${CHAIN_CONFIG.instantLpEthPct}% of the seed locks as LP; the rest buys tokens for the creator. Excess supply is burned. Trading is live on DEX Screener / GMGN from block one.`,
+    title: "Bonding curve first",
+    body: `The whole ${CHAIN_CONFIG.totalSupply.toLocaleString()} supply goes to the curve, which sells ${CHAIN_CONFIG.curveSupply.toLocaleString()} of it against virtual reserves. Coins open at ${CHAIN_CONFIG.launchFdvEth} ETH market cap, so there is no price for the creator to set and nothing to seed.`,
+  },
+  {
+    title: "Graduation to Uniswap v4",
+    body: `At ${CHAIN_CONFIG.graduationThreshold} ETH raised the curve migrates in the same transaction as the crossing buy: the untouched ${CHAIN_CONFIG.poolSupply.toLocaleString()} tokens and the full raise become a Uniswap v4 position at about ${CHAIN_CONFIG.graduationFdvEth} ETH market cap.`,
   },
   {
     title: "Locked liquidity",
-    body: "The Uniswap V3 LP NFT is sent to the dead address so principal cannot be withdrawn. Verify the pool and lock on Blockscout and DEX Screener.",
+    body: "Liquidity is minted full-range and the hook reverts every removal attempt, so principal can never be withdrawn — there is no LP NFT to transfer or unlock. Verify the pool on Blockscout and DEX Screener.",
   },
   {
-    title: "2% buy tax",
-    body: `Buys (pool → wallet) take a hardcoded ${TRADE_FEE_PCT}% token tax — ${CREATOR_FEE_PCT}% to the creator wallet and ${PLATFORM_FEE_PCT}% to PumpRobin. No owner, pause, blacklist, or fee setter.`,
+    title: `${TRADE_FEE_PCT}% on every buy and sell`,
+    body: `The v4 hook takes ${TRADE_FEE_PCT}% of the ETH leg of every swap — ${CREATOR_FEE_PCT}% to the creator and ${PLATFORM_FEE_PCT}% to PumpRobin — no matter which router or aggregator sends it. The token itself is a plain ERC-20 with no transfer tax, owner, pause, blacklist or fee setter.`,
   },
   {
     title: "Dev buy / ownership",
-    body: "Raise the LP seed above the minimum to buy a larger first position in the same create transaction. Ownership presets on the launch form size that seed.",
+    body: "Send ETH above the creation fee and the factory spends it on the curve for you in the same transaction, before anyone else can trade. Ownership presets on the launch form size that buy.",
   },
   {
     title: "Socials & metadata",

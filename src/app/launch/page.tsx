@@ -53,15 +53,11 @@ import {
 import type { LaunchMetadata } from "@/lib/data-types";
 import {
   DEFAULT_SUPPLY,
-  estimatedInstantFdvEth,
-  ethInForInstantSupplyPercent,
+  ethInForSupplyPercent,
   formatSupplyShort,
-  instantLpSupplyPct,
-  launchInstantSeedEth,
+  launchBuyEth,
   minEthToLaunch,
-  minInstantSeedEth,
-  splitInstantSeed,
-  supplyPercentForInstantSeed,
+  supplyPercentForEthIn,
   uniswapBuyImpactPct,
 } from "@/lib/curve";
 
@@ -368,9 +364,9 @@ export default function LaunchPage() {
       if (typeof draft.supply === "number" && draft.supply > 0) setSupply(draft.supply);
       if (typeof draft.decimals === "number") setDecimals(draft.decimals);
       setInitialBuyEth(
-        draft.initialBuyEth && Number(draft.initialBuyEth) >= minInstantSeedEth()
+        draft.initialBuyEth && Number(draft.initialBuyEth) > 0
           ? draft.initialBuyEth
-          : CHAIN_CONFIG.minInstantSeedEth
+          : ""
       );
       setOwnershipPct(
         typeof draft.ownershipPct === "number" ? draft.ownershipPct : null
@@ -503,21 +499,18 @@ export default function LaunchPage() {
           data: log.data,
           topics: log.topics,
         });
+        // A launch only graduates later, but a large first buy can cross the
+        // threshold in the same transaction.
         if (decoded.eventName === "Graduated") {
           const args = decoded.args as unknown as {
-            pool: `0x${string}`;
+            poolId: `0x${string}`;
             ethLiquidity: bigint;
+            tokenLiquidity: bigint;
           };
-          uniswapPool = args.pool;
+          uniswapPool = args.poolId;
           lpEth = Number(formatEther(args.ethLiquidity));
-        }
-        if (decoded.eventName === "InstantSeeded") {
-          const args = decoded.args as unknown as {
-            lpSupplyBps: bigint;
-            tokensInLp: bigint;
-          };
-          lpSupplyBps = Number(args.lpSupplyBps);
-          tokensInLp = Number(formatEther(args.tokensInLp));
+          tokensInLp = Number(formatEther(args.tokenLiquidity));
+          lpSupplyBps = Math.round((tokensInLp / DEFAULT_SUPPLY) * 10_000);
         }
       } catch {
         /* not curve event */
@@ -721,33 +714,29 @@ export default function LaunchPage() {
   const buyEthNum = Number(initialBuyEth) || 0;
 
   const preview = useMemo(() => {
-    const seed = launchInstantSeedEth(buyEthNum || minInstantSeedEth());
     const ownershipCosts = OWNERSHIP_PRESETS.map((pct) => ({
       pct,
-      eth: ethInForInstantSupplyPercent(pct, effectiveSupply),
+      eth: ethInForSupplyPercent(pct, effectiveSupply),
     }));
     return {
-      seedEth: seed,
-      fdv: estimatedInstantFdvEth(seed),
-      lpPct: instantLpSupplyPct(seed),
+      buyEth: launchBuyEth(buyEthNum),
+      /** Spot market cap the coin opens at, before any buy. */
+      fdv: CHAIN_CONFIG.launchFdvEth,
       ownershipCosts,
     };
   }, [effectiveSupply, buyEthNum]);
 
-  const seedEthForTx = launchInstantSeedEth(buyEthNum);
+  const buyEthForTx = launchBuyEth(buyEthNum);
   const minEthNeeded = minEthToLaunch(buyEthNum, featureBoost);
   const walletEth = ethBalance ? Number(formatEther(ethBalance.value)) : 0;
   const feeShareTotalPct = feeShares.reduce((sum, row) => sum + (Number(row.pct) || 0), 0);
-  const instantSplit = splitInstantSeed(seedEthForTx);
-  const instantFdv = estimatedInstantFdvEth(seedEthForTx);
-  const instantLpPct = instantLpSupplyPct(seedEthForTx);
   const receivedPct =
     buyEthNum > 0 || ownershipPct != null
-      ? supplyPercentForInstantSeed(seedEthForTx, effectiveSupply)
+      ? supplyPercentForEthIn(buyEthForTx, effectiveSupply)
       : 0;
 
   const applyOwnershipPct = (pct: number) => {
-    const eth = ethInForInstantSupplyPercent(pct, effectiveSupply);
+    const eth = ethInForSupplyPercent(pct, effectiveSupply);
     setOwnershipPct(pct);
     setInitialBuyEth(Number.isFinite(eth) ? eth.toFixed(6).replace(/\.?0+$/, "") : "");
   };
@@ -889,14 +878,9 @@ export default function LaunchPage() {
     const factory = CONTRACTS.factory;
 
     const fee = parseEther(CHAIN_CONFIG.creationFee);
-    const seedWei = parseEther(String(launchInstantSeedEth(buyEthNum)));
-
-    if (seedWei <= BigInt(0)) {
-      setError(
-        `Launch requires at least ${CHAIN_CONFIG.minInstantSeedEth} ETH LP seed (plus creation fee).`
-      );
-      return;
-    }
+    // Anything above the creation fee is spent on the curve as the creator's
+    // first buy. Zero is fine — a launch needs no liquidity behind it.
+    const seedWei = parseEther(String(launchBuyEth(buyEthNum)));
 
     setStatus("pending");
     try {
@@ -1274,13 +1258,15 @@ export default function LaunchPage() {
                 aria-hidden
                 className="pointer-events-none absolute -right-16 -top-16 h-40 w-40 rounded-full bg-rh-lime/10 blur-3xl"
               />
-              <SectionLabel>LP seed & your bag</SectionLabel>
+              <SectionLabel>Your first buy</SectionLabel>
               <p className="mt-1 text-[13px] text-rh-muted">
-                Min {CHAIN_CONFIG.minInstantSeedEth} ETH locks as Uniswap liquidity
-                so a $10–$30 buy does not show an 80% price-impact warning. At the
-                minimum, <span className="text-white">you receive 0 tokens</span>{" "}
-                and 100% of supply goes in the pool. Add extra ETH or tap 1% / 10% /
-                20% / 30% to buy a bag at launch.
+                No liquidity to seed — your coin opens at{" "}
+                <span className="text-white">
+                  {CHAIN_CONFIG.launchFdvEth} ETH market cap
+                </span>{" "}
+                and trades on the curve straight away. Leave this at 0 to launch
+                with nothing, or add ETH to buy your own bag in the same
+                transaction, before anyone else can trade.
               </p>
 
               <div className="relative mt-4">
@@ -1305,13 +1291,11 @@ export default function LaunchPage() {
                   ≈ {formatUsd(buyEthNum * ethUsd)}
                 </p>
               )}
-              {instantSplit.lpEth > 0 && (
+              {receivedPct > 0 && (
                 <p className="mt-1.5 text-xs tabular-nums text-rh-muted">
-                  0.01 ETH buy impact ≈{" "}
-                  {uniswapBuyImpactPct(0.01, instantSplit.lpEth).toFixed(1)}% on
-                  Uniswap
-                  {uniswapBuyImpactPct(0.01, instantSplit.lpEth) > 15
-                    ? " — seed more ETH so the pair looks real"
+                  You receive ≈ {receivedPct.toFixed(2)}% of supply
+                  {receivedPct > 30
+                    ? " — a bag this large will read as a dev dump"
                     : ""}
                 </p>
               )}
@@ -1374,14 +1358,14 @@ export default function LaunchPage() {
               </div>
 
               <p className="mt-3 text-[11px] leading-relaxed text-rh-dim">
-                Higher % puts more tokens in the pool (rest is burned). Target starting
-                FDV ≈ {CHAIN_CONFIG.instantTargetFdvEth} ETH.
-                {seedEthForTx > 0 ? (
+                Every coin opens at {CHAIN_CONFIG.launchFdvEth} ETH market cap and
+                graduates to Uniswap once the curve raises{" "}
+                {CHAIN_CONFIG.graduationThreshold} ETH.
+                {buyEthForTx > 0 ? (
                   <>
                     {" "}
-                    Split ≈ {instantSplit.lpEth.toFixed(4)} LP +{" "}
-                    {instantSplit.buyEth.toFixed(4)} buy · ~{instantLpPct.toFixed(2)}%
-                    of supply in pool · est. FDV {instantFdv.toFixed(2)} ETH.
+                    Your {buyEthForTx.toFixed(4)} ETH buys ≈{" "}
+                    {receivedPct.toFixed(2)}% of supply on the curve.
                   </>
                 ) : null}{" "}
                 Plus {formatEthWithUsd(Number(CHAIN_CONFIG.creationFee), ethUsd)} creation fee.
@@ -1394,8 +1378,8 @@ export default function LaunchPage() {
                 </span>
                 <span className="mt-1 block text-[11px] text-amber-100/70">
                   {formatEthWithUsd(Number(CHAIN_CONFIG.creationFee), ethUsd)} creation
-                  {seedEthForTx > 0
-                    ? ` + ${formatEthWithUsd(seedEthForTx, ethUsd)} LP seed`
+                  {buyEthForTx > 0
+                    ? ` + ${formatEthWithUsd(buyEthForTx, ethUsd)} first buy`
                     : ""}
                   {receivedPct > 0
                     ? ` (≈${receivedPct.toFixed(1)}% ownership)`
@@ -1666,15 +1650,19 @@ export default function LaunchPage() {
                   </dd>
                 </div>
                 <div className="flex justify-between gap-3">
-                  <dt className="text-rh-muted">LP supply</dt>
+                  <dt className="text-rh-muted">Sold on curve</dt>
                   <dd className="text-right tabular-nums text-rh-lime">
-                    ~{preview.lpPct.toFixed(2)}%
+                    {formatSupplyShort(CHAIN_CONFIG.curveSupply)}
                   </dd>
                 </div>
                 <div className="flex justify-between gap-3">
-                  <dt className="text-rh-muted">LP seed</dt>
+                  <dt className="text-rh-muted">Graduates at</dt>
                   <dd className="text-right tabular-nums text-white">
-                    <EthWithUsd eth={preview.seedEth} ethUsd={ethUsd} layout="stacked" />
+                    <EthWithUsd
+                      eth={CHAIN_CONFIG.graduationThreshold}
+                      ethUsd={ethUsd}
+                      layout="stacked"
+                    />
                   </dd>
                 </div>
                 {buyEthNum > 0 && (

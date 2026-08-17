@@ -46,7 +46,7 @@ export async function POST(
     );
     const supply = token.metadata?.supply ?? DEFAULT_SUPPLY;
     const poolAddr =
-      live.uniswapPool ||
+      live.poolId ||
       token.metadata?.uniswapPool ||
       null;
 

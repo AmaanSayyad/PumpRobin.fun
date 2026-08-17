@@ -19,7 +19,7 @@ export async function readBondingCurveOnChain(curve: Address) {
   const client = getRobinhoodPublicClient();
   const [
     graduated,
-    uniswapPool,
+    poolIdRaw,
     realEth,
     realTokens,
     virtualEth,
@@ -34,7 +34,7 @@ export async function readBondingCurveOnChain(curve: Address) {
     client.readContract({
       address: curve,
       abi: BONDING_CURVE_ABI,
-      functionName: "uniswapPool",
+      functionName: "poolId",
     }),
     client.readContract({
       address: curve,
@@ -63,16 +63,12 @@ export async function readBondingCurveOnChain(curve: Address) {
     }),
   ]);
 
-  const pool =
-    uniswapPool &&
-    (uniswapPool as string).toLowerCase() !==
-      "0x0000000000000000000000000000000000000000"
-      ? (uniswapPool as string).toLowerCase()
-      : null;
+  // v4 pools are identified by a poolId, and one only exists after graduation.
+  const pool = graduated ? (poolIdRaw as string) : null;
 
   return {
     graduated: Boolean(graduated),
-    uniswapPool: pool,
+    poolId: pool,
     realEthReserves: Number(formatEther(realEth as bigint)),
     realTokenReserves: Number(formatEther(realTokens as bigint)),
     virtualEthReserves: Number(formatEther(virtualEth as bigint)),

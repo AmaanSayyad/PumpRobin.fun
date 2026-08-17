@@ -314,10 +314,7 @@ export default function TokenPage({
     }
     let cancelled = false;
     void (async () => {
-      const ok = await curveSupportsFeeRouter(
-        wagmiConfig,
-        token.bondingCurve as Address
-      );
+      const ok = await curveSupportsFeeRouter();
       if (!cancelled) setUsesFeeRouter(ok);
     })();
     return () => {
@@ -487,7 +484,7 @@ export default function TokenPage({
               price: result.price,
               feeEth: 0,
               txHash: result.txHash,
-              uniswapPool: result.uniswapPool,
+              uniswapPool: result.poolId,
             }),
           });
           return;
@@ -544,7 +541,7 @@ export default function TokenPage({
           realEthReserves: result.realEthReserves,
           realTokenReserves: result.realTokenReserves,
           graduated: result.graduated,
-          uniswapPool: result.uniswapPool,
+          uniswapPool: result.poolId,
         }),
       });
       const data = await res.json();
@@ -1130,38 +1127,23 @@ export default function TokenPage({
                 <div className="mt-4 border border-rh-raised bg-black/60 p-3 text-center">
                   <p className="text-[11px] text-rh-muted">Your accumulated fees</p>
                   <p className="mt-1 text-sm font-medium tabular-nums">
-                    {pendingFees.creatorTokens > 0
-                      ? `${formatTokenAmount(pendingFees.creatorTokens)} $${token.symbol}`
-                      : `${formatEth(pendingFees.creatorEth)} ETH`}
+                    {formatEth(pendingFees.creatorEth)} ETH
                   </p>
-                  {pendingFees.creatorTokens > 0 && (
+                  {ethUsd != null && (
                     <p className="mt-1 text-[10px] text-rh-dim">
-                      ~{formatEth(pendingFees.creatorTokens * token.price)} ETH
-                      {ethUsd != null && (
-                        <>
-                          {" "}
-                          (~
-                          {formatUsd(
-                            ethToUsd(
-                              pendingFees.creatorTokens * token.price,
-                              ethUsd
-                            )
-                          )}
-                          )
-                        </>
-                      )}
-                    </p>
-                  )}
-                  {pendingFees.creatorTokens <= 0 && ethUsd != null && (
-                    <p className="mt-1 text-[10px] text-rh-dim">
-                      (~
-                      {formatUsd(ethToUsd(pendingFees.creatorEth, ethUsd))})
+                      (~{formatUsd(ethToUsd(pendingFees.creatorEth, ethUsd))})
                     </p>
                   )}
                   <p className="mt-1 text-[10px] text-rh-dim">
-                    Claim anytime. Platform share auto-sends after ~
-                    ${CHAIN_CONFIG.feeClaimThresholdUsdHint}.
+                    {CHAIN_CONFIG.creatorFeeBps / 100}% of every buy and sell, on
+                    any venue. Claim anytime. Platform share auto-sends after ~$
+                    {CHAIN_CONFIG.feeClaimThresholdUsdHint}.
                   </p>
+                  {pendingFees.feeShare && (
+                    <p className="mt-1 text-[10px] text-rh-dim">
+                      Split between wallets — you can only claim your share.
+                    </p>
+                  )}
                   <RhButton
                     className="mt-3 w-full"
                     variant="ghost"
@@ -1174,6 +1156,7 @@ export default function TokenPage({
                         config: wagmiConfig,
                         curve: token.bondingCurve as Address,
                         token: token.address as Address,
+                        feeShare: pendingFees.feeShare,
                       })
                         .then(() => {
                           void readPendingFees(
