@@ -6,17 +6,18 @@ import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "./PumpRobinToken.sol";
 import "./PumpRobinHook.sol";
 import "./interfaces/IWETH.sol";
+import {
+    IAllowanceTransfer,
+    IPositionManager,
+    V4Actions
+} from "./interfaces/IUniswapV4Periphery.sol";
 import "./libraries/LiquidityAmounts.sol";
 import "./libraries/SqrtPriceMath.sol";
 import {
-    BalanceDelta,
-    BalanceDeltaLibrary,
     Currency,
     IHooks,
     IPoolManager,
-    IUnlockCallback,
     LPFeeLibrary,
-    ModifyLiquidityParams,
     PoolId,
     PoolIdLibrary,
     PoolKey
@@ -32,11 +33,24 @@ import {
  *      liquidity depth. Verified on-chain: with these reserves the curve sells
  *      precisely 830,000,000 tokens by the 5 ETH graduation threshold.
  */
-contract BondingCurve is ReentrancyGuard, IUnlockCallback {
+contract BondingCurve is ReentrancyGuard {
     using PoolIdLibrary for PoolKey;
 
     address public constant WETH = 0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73;
     address public constant POOL_MANAGER = 0x8366a39CC670B4001A1121B8F6A443A643e40951;
+    address public constant POSITION_MANAGER = 0x58daec3116aae6D93017bAAea7749052E8a04fA7;
+    address public constant PERMIT2 = 0x000000000022D473030F116dDEE9F6B43aC78BA3;
+
+    /**
+     * @notice Where the LP position NFT goes at graduation.
+     * @dev The hook already reverts on every removal, but scanners score
+     *      liquidity safety by reading the position NFT's owner. Minting
+     *      straight through PoolManager leaves no NFT at all, so a permanently
+     *      locked pool reads as unlocked. Burning the NFT says the same thing
+     *      in the form they can actually check.
+     */
+    address public constant LP_BURN_ADDRESS =
+        0x000000000000000000000000000000000000dEaD;
 
     uint256 public constant TOTAL_SUPPLY = 1_000_000_000 * 1e18;
 
@@ -351,9 +365,10 @@ contract BondingCurve is ReentrancyGuard, IUnlockCallback {
     // --------------------------------------------------------------- migration
 
     /**
-     * @dev Moves the untouched 170M tokens plus the full raise into the v4 pool.
-     *      Liquidity is minted to this contract and can never be withdrawn —
-     *      the hook reverts on beforeRemoveLiquidity.
+     * @dev Moves the untouched 170M tokens plus the full raise into the v4 pool
+     *      and burns the resulting position NFT, so the liquidity is locked
+     *      twice over: the hook reverts on removal, and nobody holds the token
+     *      that would authorise one.
      */
     function _migrateToV4() internal {
         require(!graduated, "Graduated");
@@ -386,52 +401,43 @@ contract BondingCurve is ReentrancyGuard, IUnlockCallback {
         require(liquidity > 0, "No liquidity minted");
         poolLiquidity = liquidity;
 
-        IPoolManager(POOL_MANAGER).unlock(abi.encode(liquidity));
+        _approveForPositionManager(Currency.unwrap(poolKey.currency0));
+        _approveForPositionManager(Currency.unwrap(poolKey.currency1));
+
+        bytes memory actions = abi.encodePacked(
+            V4Actions.MINT_POSITION,
+            V4Actions.SETTLE_PAIR
+        );
+        bytes[] memory params = new bytes[](2);
+        params[0] = abi.encode(
+            poolKey,
+            TICK_LOWER,
+            TICK_UPPER,
+            uint256(liquidity),
+            uint128(amount0),
+            uint128(amount1),
+            LP_BURN_ADDRESS,
+            bytes("")
+        );
+        params[1] = abi.encode(poolKey.currency0, poolKey.currency1);
+
+        IPositionManager(POSITION_MANAGER).modifyLiquidities(
+            abi.encode(actions, params),
+            block.timestamp
+        );
 
         emit Graduated(PoolId.unwrap(poolId()), ethLiq, tokenLiq, liquidity);
     }
 
-    function unlockCallback(bytes calldata data)
-        external
-        override
-        returns (bytes memory)
-    {
-        require(msg.sender == POOL_MANAGER, "Only PoolManager");
-        uint128 liquidity = abi.decode(data, (uint128));
-
-        (BalanceDelta callerDelta, ) = IPoolManager(POOL_MANAGER).modifyLiquidity(
-            poolKey,
-            ModifyLiquidityParams({
-                tickLower: TICK_LOWER,
-                tickUpper: TICK_UPPER,
-                liquidityDelta: int256(uint256(liquidity)),
-                salt: bytes32(0)
-            }),
-            ""
+    /// @dev PositionManager only pulls ERC-20s through Permit2.
+    function _approveForPositionManager(address asset) internal {
+        IERC20(asset).approve(PERMIT2, type(uint256).max);
+        IAllowanceTransfer(PERMIT2).approve(
+            asset,
+            POSITION_MANAGER,
+            type(uint160).max,
+            uint48(block.timestamp + 1 days)
         );
-
-        // v4 reverts unless every delta nets to zero, so pay exactly what is
-        // owed rather than dumping the whole balance in.
-        _resolve(poolKey.currency0, BalanceDeltaLibrary.amount0(callerDelta));
-        _resolve(poolKey.currency1, BalanceDeltaLibrary.amount1(callerDelta));
-        return "";
-    }
-
-    /// @dev Negative delta = we owe the pool; positive = the pool owes us.
-    function _resolve(Currency currency, int128 delta) internal {
-        if (delta == 0) return;
-        if (delta < 0) {
-            uint256 owed = uint256(uint128(-delta));
-            IPoolManager(POOL_MANAGER).sync(currency);
-            IERC20(Currency.unwrap(currency)).transfer(POOL_MANAGER, owed);
-            IPoolManager(POOL_MANAGER).settle();
-        } else {
-            IPoolManager(POOL_MANAGER).take(
-                currency,
-                address(this),
-                uint256(uint128(delta))
-            );
-        }
     }
 
     receive() external payable {}

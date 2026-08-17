@@ -114,6 +114,18 @@ console.log(`  PoolManager code installed (${(pmCode.length - 2) / 2} bytes)`);
 await test.setCode({ address: WETH, bytecode: artifact("WETH9").deployedBytecode });
 console.log("  WETH9 installed at the canonical address");
 
+// Graduation mints through PositionManager (via Permit2) so the position NFT
+// can be burned, which is how scanners read liquidity as locked.
+for (const [name, address] of [
+  ["PositionManager", "0x58daec3116aae6D93017bAAea7749052E8a04fA7"],
+  ["Permit2", "0x000000000022D473030F116dDEE9F6B43aC78BA3"],
+]) {
+  const code = await upstream.getBytecode({ address });
+  if (!code || code.length <= 2) throw new Error(`could not read ${name} code`);
+  await test.setCode({ address, bytecode: code });
+  console.log(`  ${name} code installed (${(code.length - 2) / 2} bytes)`);
+}
+
 const create2 = await deploy("Create2Factory");
 console.log("  Create2Factory", create2.address);
 
@@ -287,6 +299,30 @@ check(
   "170M tokens migrated into the pool",
   lpTokens / 10n ** 18n >= 169_000_000n && lpTokens / 10n ** 18n <= 170_000_000n,
   (lpTokens / 10n ** 18n).toLocaleString() + " tokens"
+);
+
+// Scanners score liquidity safety off the position NFT's owner, so check the
+// thing they check rather than trusting that the hook alone reads as locked.
+const POSITION_MANAGER = "0x58daec3116aae6D93017bAAea7749052E8a04fA7";
+const DEAD = "0x000000000000000000000000000000000000dEaD";
+const burnedPositions = await pub.readContract({
+  address: POSITION_MANAGER,
+  abi: [
+    {
+      type: "function",
+      name: "balanceOf",
+      stateMutability: "view",
+      inputs: [{ type: "address" }],
+      outputs: [{ type: "uint256" }],
+    },
+  ],
+  functionName: "balanceOf",
+  args: [DEAD],
+});
+check(
+  "the LP position NFT is burned",
+  burnedPositions > 0n,
+  burnedPositions.toString() + " held by 0xdead"
 );
 
 // ---------------------------------------------------------------------------

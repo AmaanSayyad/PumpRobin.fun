@@ -778,6 +778,32 @@ export const BONDING_CURVE_ABI = [
   },
   {
     "inputs": [],
+    "name": "LP_BURN_ADDRESS",
+    "outputs": [
+      {
+        "internalType": "address",
+        "name": "",
+        "type": "address"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "PERMIT2",
+    "outputs": [
+      {
+        "internalType": "address",
+        "name": "",
+        "type": "address"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
     "name": "PLATFORM_FLUSH_WEI",
     "outputs": [
       {
@@ -792,6 +818,19 @@ export const BONDING_CURVE_ABI = [
   {
     "inputs": [],
     "name": "POOL_MANAGER",
+    "outputs": [
+      {
+        "internalType": "address",
+        "name": "",
+        "type": "address"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "POSITION_MANAGER",
     "outputs": [
       {
         "internalType": "address",
@@ -1261,25 +1300,6 @@ export const BONDING_CURVE_ABI = [
       }
     ],
     "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "bytes",
-        "name": "data",
-        "type": "bytes"
-      }
-    ],
-    "name": "unlockCallback",
-    "outputs": [
-      {
-        "internalType": "bytes",
-        "name": "",
-        "type": "bytes"
-      }
-    ],
-    "stateMutability": "nonpayable",
     "type": "function"
   },
   {
