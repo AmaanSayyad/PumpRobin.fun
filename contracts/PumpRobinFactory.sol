@@ -7,17 +7,18 @@ import "./PumpRobinHook.sol";
 
 /**
  * @title PumpRobinFactory
- * @notice Instant Uniswap V3 launch: 100% supply in LP, NFT burned to 0xdead.
+ * @notice Deploys a token + bonding curve pair and registers the future
+ *         Uniswap v4 pool with the fee hook. 830M sells on the curve, the
+ *         remaining 170M plus the raise migrate to v4 with locked liquidity.
  */
 contract PumpRobinFactory {
-    uint256 public constant CREATION_FEE = 0.004 ether;
-    uint256 public constant MIN_INSTANT_SEED = 0.1 ether;
-    uint256 public constant INITIAL_VIRTUAL_ETH = 1.3 ether;
-    uint256 public constant INITIAL_VIRTUAL_TOKENS = 1_073_000_000 * 1e18;
+    uint256 public constant DEFAULT_CREATION_FEE = 0.004 ether;
 
     address public owner;
     address public feeCollector;
+    uint256 public creationFee;
     PumpRobinHook public immutable hook;
+
     address[] public allTokens;
     mapping(address => address) public tokenToCurve;
     mapping(address => address) public curveToToken;
@@ -30,7 +31,16 @@ contract PumpRobinFactory {
         string symbol,
         string imageUri
     );
+    event TokenMetadata(address indexed token, string metadataURI, string description);
+    event LaunchConfigured(
+        address indexed token,
+        bytes32 poolId,
+        bool antiSnipe,
+        uint256 antiSnipeEndsAt,
+        bool maxWallet
+    );
     event FeeCollectorUpdated(address indexed previous, address indexed next);
+    event CreationFeeUpdated(uint256 previous, uint256 next);
 
     constructor(address feeCollector_, address hook_) {
         require(feeCollector_ != address(0), "Fee collector required");
@@ -38,8 +48,13 @@ contract PumpRobinFactory {
         owner = msg.sender;
         feeCollector = feeCollector_;
         hook = PumpRobinHook(payable(hook_));
+        creationFee = DEFAULT_CREATION_FEE;
     }
 
+    /**
+     * @notice Launch a token. Any ETH above `creationFee` becomes the creator's
+     *         first buy on the curve, executed before anyone else can trade.
+     */
     function createToken(
         string calldata name,
         string calldata symbol,
@@ -47,16 +62,12 @@ contract PumpRobinFactory {
         string calldata description,
         string calldata metadataURI,
         bool antiSnipe,
-        bool maxWallet,
-        address[] calldata feeRecipients,
-        uint16[] calldata feeShareBps
+        bool maxWallet
     ) external payable returns (address token, address bondingCurve) {
-        require(bytes(name).length > 0, "Name required");
-        require(bytes(symbol).length > 0, "Symbol required");
-        require(
-            msg.value >= CREATION_FEE + MIN_INSTANT_SEED,
-            "Need creation fee + seed"
-        );
+        require(bytes(name).length > 0 && bytes(name).length <= 64, "Bad name");
+        require(bytes(symbol).length > 0 && bytes(symbol).length <= 16, "Bad symbol");
+        require(bytes(description).length <= 2_000, "Description too long");
+        require(msg.value >= creationFee, "Creation fee required");
 
         PumpRobinToken newToken = new PumpRobinToken(
             name,
@@ -69,54 +80,56 @@ contract PumpRobinFactory {
             antiSnipe,
             maxWallet
         );
+        token = address(newToken);
 
         BondingCurve curve = new BondingCurve(
-            address(newToken),
+            token,
             msg.sender,
             address(this),
             feeCollector,
-            address(hook),
-            INITIAL_VIRTUAL_ETH,
-            INITIAL_VIRTUAL_TOKENS
+            address(hook)
         );
-
-        token = address(newToken);
         bondingCurve = address(curve);
 
-        newToken.setBondingCurve(bondingCurve);
-        if (feeRecipients.length > 0) {
-            newToken.setFeeShares(feeRecipients, feeShareBps);
-        }
-
-        uint256 supply = newToken.totalSupply();
-        newToken.transfer(bondingCurve, supply);
+        require(newToken.transfer(bondingCurve, newToken.totalSupply()), "Curve funding failed");
+        hook.register(curve.poolId(), bondingCurve, token, msg.sender);
 
         allTokens.push(token);
         tokenToCurve[token] = bondingCurve;
         curveToToken[bondingCurve] = token;
 
-        emit TokenCreated(
+        emit TokenCreated(token, bondingCurve, msg.sender, name, symbol, imageUri);
+        emit TokenMetadata(token, metadataURI, description);
+        emit LaunchConfigured(
             token,
-            bondingCurve,
-            msg.sender,
-            name,
-            symbol,
-            imageUri
+            PoolId.unwrap(curve.poolId()),
+            antiSnipe,
+            newToken.antiSnipeEndsAt(),
+            maxWallet
         );
 
-        (bool feeSent, ) = feeCollector.call{value: CREATION_FEE}("");
-        require(feeSent, "Fee transfer failed");
+        uint256 fee = creationFee;
+        if (fee > 0) {
+            (bool feeSent, ) = feeCollector.call{value: fee}("");
+            require(feeSent, "Fee transfer failed");
+        }
 
-        uint256 remainder = msg.value - CREATION_FEE;
-        curve.seedInstantUniswap{value: remainder}(msg.sender, 0);
+        uint256 initialBuy = msg.value - fee;
+        if (initialBuy > 0) curve.buyFor{value: initialBuy}(msg.sender, 0);
     }
 
     function setFeeCollector(address next) external {
         require(msg.sender == owner, "Not owner");
         require(next != address(0), "Fee collector required");
-        address prev = feeCollector;
+        emit FeeCollectorUpdated(feeCollector, next);
         feeCollector = next;
-        emit FeeCollectorUpdated(prev, next);
+    }
+
+    function setCreationFee(uint256 next) external {
+        require(msg.sender == owner, "Not owner");
+        require(next <= 1 ether, "Fee too high");
+        emit CreationFeeUpdated(creationFee, next);
+        creationFee = next;
     }
 
     function getAllTokens() external view returns (address[] memory) {
@@ -125,10 +138,6 @@ contract PumpRobinFactory {
 
     function tokenCount() external view returns (uint256) {
         return allTokens.length;
-    }
-
-    function creationFee() external pure returns (uint256) {
-        return CREATION_FEE;
     }
 
     receive() external payable {}

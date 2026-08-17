@@ -271,6 +271,12 @@ contract PumpRobinHook is Ownable {
             config.pendingCreator += SafeCast.toUint128(creatorShare);
             config.pendingPlatform += SafeCast.toUint128(platformShare);
         }
+        // Platform fees forward themselves once ~$30 has accrued. Creator fees
+        // keep accruing until claimed. The self-call is wrapped so a failing
+        // payout can never revert someone's swap.
+        if (config.pendingPlatform >= PLATFORM_FLUSH_WEI) {
+            try this.sweep(config.token) {} catch {}
+        }
     }
 
     function _payEth(address to, uint256 wethAmt) internal {
