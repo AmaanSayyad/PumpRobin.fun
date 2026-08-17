@@ -86,7 +86,15 @@ contract PumpRobinHook is Ownable {
 
     receive() external payable {}
 
+    /**
+     * @notice Binds the hook to its factory. Callable once, ever.
+     * @dev Left re-settable this would be a live centralisation risk: the owner
+     *      could point the hook at a factory of their choosing and register
+     *      arbitrary pools against it. One shot, then the owner has no powers
+     *      left at all and ownership can be renounced.
+     */
     function setFactory(address factory_) external onlyOwner {
+        require(factory == address(0), "Factory already set");
         require(factory_ != address(0), "Bad factory");
         factory = factory_;
         emit FactorySet(factory_);

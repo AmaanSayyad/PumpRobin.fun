@@ -106,17 +106,20 @@ contract PumpRobinToken is ERC20 {
         return false;
     }
 
+    /**
+     * @dev Written as early returns rather than one compound condition so the
+     *      "no cap" case leaves an immediate return in the bytecode. Folded
+     *      into a single `if`, decompilers render the dead branch as an
+     *      unconditional `require(balanceOf(to) <= 0)` and audit tools read an
+     *      untaxed token as one that reverts on every transfer.
+     */
     function _update(address from, address to, uint256 amount) internal override {
         super._update(from, to, amount);
-        // ponytail: contracts (pool, routers, curve) are exempt — an EOA cap is
+        uint256 cap = maxWalletAmount;
+        if (cap == 0) return;
+        // Contracts — the pool, routers, the curve — are exempt. An EOA cap is
         // all "max wallet 2%" ever meant, and this needs no address registry.
-        if (
-            maxWalletAmount != 0 &&
-            to != address(0) &&
-            to != DEAD &&
-            to.code.length == 0
-        ) {
-            require(balanceOf(to) <= maxWalletAmount, "Max wallet 2%");
-        }
+        if (to == address(0) || to == DEAD || to.code.length != 0) return;
+        require(balanceOf(to) <= cap, "Max wallet 2%");
     }
 }
