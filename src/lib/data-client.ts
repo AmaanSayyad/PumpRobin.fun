@@ -35,7 +35,17 @@ export function isMarketToken(token: {
 }
 
 /** Tokens created through PumpRobin (registry or on-chain factory). */
-export function isPumpRobinLaunch(token: { source?: string }): boolean {
+/**
+ * Only non-PumpRobin coins pay the extra platform cut when swapped here, so a
+ * coin we launched must never be misread as external. A bonding curve is proof
+ * of a PumpRobin launch even when the row was matched through a market feed
+ * rather than our own registry.
+ */
+export function isPumpRobinLaunch(token: {
+  source?: string;
+  bondingCurve?: string | null;
+}): boolean {
+  if (token.bondingCurve && !/^0x0{40}$/i.test(token.bondingCurve)) return true;
   return token.source === "registry" || token.source === "onchain";
 }
 

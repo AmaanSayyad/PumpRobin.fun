@@ -300,6 +300,9 @@ export default function LaunchPage() {
   const [symbol, setSymbol] = useState("");
   const [description, setDescription] = useState("");
   const [imagePreview, setImagePreview] = useState<string | null>(null);
+  /** The IPFS address actually written on-chain — never the local blob: preview. */
+  const [imageIpfsUrl, setImageIpfsUrl] = useState<string | null>(null);
+  const [imageUploading, setImageUploading] = useState(false);
   const [bannerPreview, setBannerPreview] = useState<string | null>(null);
   const [socials, setSocials] = useState<Record<LaunchSocialKey, string>>(EMPTY_SOCIALS);
   const [showSocials, setShowSocials] = useState(false);
@@ -352,6 +355,13 @@ export default function LaunchPage() {
       setSymbol(draft.symbol ?? "");
       setDescription(draft.description ?? "");
       setImagePreview(draft.imagePreview ?? null);
+      // A saved draft only ever holds a real upload URL — blob: previews die
+      // with the tab, so anything else has to be re-uploaded.
+      setImageIpfsUrl(
+        draft.imagePreview && !draft.imagePreview.startsWith("blob:")
+          ? draft.imagePreview
+          : null
+      );
       setBannerPreview(draft.bannerPreview ?? null);
       setSocials({ ...EMPTY_SOCIALS, ...(draft.socials ?? {}) });
       setShowSocials(Boolean(draft.showSocials));
@@ -758,8 +768,13 @@ export default function LaunchPage() {
 
     // Instant local preview while upload runs (HEIC may not paint until IPFS JPEG returns)
     const localUrl = URL.createObjectURL(file);
-    if (kind === "image") setImagePreview(localUrl);
-    else setBannerPreview(localUrl);
+    if (kind === "image") {
+      setImagePreview(localUrl);
+      // A blob: URL only resolves inside this tab. Clear the IPFS address until
+      // the upload lands so a launch can never write one on-chain.
+      setImageIpfsUrl(null);
+      setImageUploading(true);
+    } else setBannerPreview(localUrl);
 
     try {
       const form = new FormData();
@@ -769,18 +784,24 @@ export default function LaunchPage() {
       if (!res.ok || !json.url) {
         throw new Error(json.error || "IPFS upload failed");
       }
-      if (kind === "image") setImagePreview(json.url);
-      else setBannerPreview(json.url);
+      if (kind === "image") {
+        setImagePreview(json.url);
+        setImageIpfsUrl(json.url);
+      } else setBannerPreview(json.url);
       URL.revokeObjectURL(localUrl);
     } catch (err) {
-      if (kind === "image") setImagePreview(null);
-      else setBannerPreview(null);
+      if (kind === "image") {
+        setImagePreview(null);
+        setImageIpfsUrl(null);
+      } else setBannerPreview(null);
       URL.revokeObjectURL(localUrl);
       setError(
         err instanceof Error
           ? err.message
           : "Could not upload image to IPFS — try again"
       );
+    } finally {
+      if (kind === "image") setImageUploading(false);
     }
   };
 
@@ -789,6 +810,7 @@ export default function LaunchPage() {
     setSymbol("");
     setDescription("");
     setImagePreview(null);
+    setImageIpfsUrl(null);
     setBannerPreview(null);
     setSocials(EMPTY_SOCIALS);
     setShowSocials(false);
@@ -812,10 +834,17 @@ export default function LaunchPage() {
     setError("");
     setLaunched(null);
 
-    if (!imagePreview || imagePreview.startsWith("blob:")) {
-      setError("Upload a logo and wait for IPFS — Bags/DEX Screener need a public image URL.");
+    if (imageUploading) {
+      setError("Still uploading the logo to IPFS — give it a second.");
       return;
     }
+    if (!imageIpfsUrl || imageIpfsUrl.startsWith("blob:")) {
+      setError(
+        "Upload a logo and wait for IPFS — wallets and DEX Screener need a public image URL."
+      );
+      return;
+    }
+    const imageUrl: string = imageIpfsUrl;
 
     const parsedShares = feeSharing
       ? feeShares
@@ -903,24 +932,29 @@ export default function LaunchPage() {
       pendingLaunch.current = {
         name,
         symbol,
-        imageUri: imagePreview,
+        imageUri: imageUrl,
         description,
         creator: address,
         metadata,
       };
       registeredTx.current = null;
 
-      let metadataURI = imagePreview;
+      let metadataURI: string = imageUrl;
       try {
         const metaRes = await fetch("/api/metadata", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
+          // Wallets, DEX Screener and GMGN read the pump.fun-style shape:
+          // a flat `image` plus `createdOn` for launchpad attribution.
           body: JSON.stringify({
             name,
             symbol,
             description,
-            image: imagePreview,
-            external_url: `https://pumprobin.fun/token/${name}`,
+            image: imageUrl,
+            createdOn: "https://pumprobin.fun",
+            website: socials.website || "https://pumprobin.fun",
+            twitter: socials.twitter || null,
+            telegram: socials.telegram || null,
             ...pickSocialMetadata(socials),
           }),
         });
@@ -937,7 +971,7 @@ export default function LaunchPage() {
         args: [
           name,
           symbol,
-          imagePreview,
+          imageUrl,
           description,
           metadataURI,
           antiSnipe,

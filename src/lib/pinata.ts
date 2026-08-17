@@ -2,10 +2,16 @@
 
 const PINATA_PIN_URL = "https://api.pinata.cloud/pinning/pinFileToIPFS";
 
+/**
+ * Token art has to be fetchable by wallets, DEX Screener and GMGN, not just by
+ * us. Pinata's shared gateway rate-limits third-party fetchers hard enough that
+ * indexers give up and show no logo, so default to ipfs.io — the gateway the
+ * other Robinhood launchpads publish. A dedicated gateway still wins if set.
+ */
 export function pinataGatewayUrl(cid: string): string {
   const base =
     process.env.NEXT_PUBLIC_PINATA_GATEWAY?.replace(/\/$/, "") ||
-    "https://gateway.pinata.cloud/ipfs";
+    "https://ipfs.io/ipfs";
   return `${base}/${cid}`;
 }
 
