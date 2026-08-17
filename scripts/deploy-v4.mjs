@@ -91,11 +91,23 @@ async function deploy(name, args = []) {
 }
 
 async function send(c, functionName, args = []) {
+  // eth_estimateGas under-reports calls that CREATE2 a contract: EIP-150 only
+  // forwards 63/64 of the remaining gas to the child, so the outer call needs
+  // headroom the estimate does not include. Gas is ~0.02 gwei here, so a
+  // generous buffer costs nothing and a failed deploy costs a retry.
+  const estimate = await pub.estimateContractGas({
+    address: c.address,
+    abi: c.abi,
+    functionName,
+    args,
+    account,
+  });
   const hash = await wallet.writeContract({
     address: c.address,
     abi: c.abi,
     functionName,
     args,
+    gas: (estimate * 15n) / 10n,
   });
   const receipt = await pub.waitForTransactionReceipt({ hash });
   if (receipt.status !== "success") throw new Error(`${functionName} reverted`);
@@ -115,7 +127,12 @@ if (balance === 0n) {
 }
 
 console.log("deploying:");
-const create2 = await deploy("Create2Factory");
+// Reuse an existing one on a retry — it holds no state, only the CREATE2 op.
+const existingCreate2 = process.env.CREATE2_FACTORY;
+const create2 = existingCreate2
+  ? { address: getAddress(existingCreate2), abi: artifact("Create2Factory").abi }
+  : await deploy("Create2Factory");
+if (existingCreate2) console.log(`  Create2Factory       ${create2.address} (reused)`);
 
 // --- mine the hook address ---------------------------------------------------
 const hookArtifact = artifact("PumpRobinHook");
