@@ -150,12 +150,18 @@ let hookAddress;
 for (let i = 0n; i < 5_000_000n; i++) {
   const s = pad(toHex(i), { size: 32 });
   const addr = `0x${keccak256(concat(["0xff", create2.address, s, initCodeHash])).slice(26)}`;
-  if ((BigInt(addr) & FLAG_MASK) === HOOK_FLAGS) {
-    salt = s;
-    hookAddress = getAddress(addr);
-    console.log(`  mined hook salt after ${i} tries`);
-    break;
+  if ((BigInt(addr) & FLAG_MASK) !== HOOK_FLAGS) continue;
+  // Redeploying unchanged hook bytecode mines the same salt and so the same
+  // address, where CREATE2 then reverts on the contract already sitting there.
+  const occupied = await pub.getBytecode({ address: getAddress(addr) });
+  if (occupied && occupied.length > 2) {
+    console.log(`  salt ${i} lands on a deployed hook, mining past it`);
+    continue;
   }
+  salt = s;
+  hookAddress = getAddress(addr);
+  console.log(`  mined hook salt after ${i} tries`);
+  break;
 }
 if (!hookAddress) throw new Error("could not mine a hook address");
 

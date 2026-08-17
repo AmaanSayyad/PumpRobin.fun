@@ -109,8 +109,8 @@ if (originalFee > 0n) await send(factory, "setCreationFee", [0n]);
 await send(factory, "setGraduationThreshold", [THRESHOLD]);
 
 await send(factory, "createToken", [
-  "Test Five",
-  "TEST5",
+  "Test Six",
+  "TEST6",
   "https://ipfs.io/ipfs/QmTestImagePlaceholderCid00000000000001",
   "test",
   "https://ipfs.io/ipfs/QmTestMetadataPlaceholderCid0000000001",
