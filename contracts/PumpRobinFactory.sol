@@ -3,6 +3,7 @@ pragma solidity ^0.8.20;
 
 import "./PumpRobinToken.sol";
 import "./BondingCurve.sol";
+import "./PumpRobinDeployer.sol";
 import "./PumpRobinHook.sol";
 
 /**
@@ -18,10 +19,13 @@ contract PumpRobinFactory {
     address public feeCollector;
     uint256 public creationFee;
     PumpRobinHook public immutable hook;
+    PumpRobinDeployer public immutable deployer;
 
     address[] public allTokens;
     mapping(address => address) public tokenToCurve;
     mapping(address => address) public curveToToken;
+    /// @notice Zero when the creator takes the full 1% themselves.
+    mapping(address => address) public tokenToFeeShare;
 
     event TokenCreated(
         address indexed token,
@@ -42,12 +46,14 @@ contract PumpRobinFactory {
     event FeeCollectorUpdated(address indexed previous, address indexed next);
     event CreationFeeUpdated(uint256 previous, uint256 next);
 
-    constructor(address feeCollector_, address hook_) {
+    constructor(address feeCollector_, address hook_, address deployer_) {
         require(feeCollector_ != address(0), "Fee collector required");
         require(hook_ != address(0), "Hook required");
+        require(deployer_ != address(0), "Deployer required");
         owner = msg.sender;
         feeCollector = feeCollector_;
         hook = PumpRobinHook(payable(hook_));
+        deployer = PumpRobinDeployer(deployer_);
         creationFee = DEFAULT_CREATION_FEE;
     }
 
@@ -62,14 +68,16 @@ contract PumpRobinFactory {
         string calldata description,
         string calldata metadataURI,
         bool antiSnipe,
-        bool maxWallet
+        bool maxWallet,
+        address[] calldata feeRecipients,
+        uint16[] calldata feeShareBps
     ) external payable returns (address token, address bondingCurve) {
         require(bytes(name).length > 0 && bytes(name).length <= 64, "Bad name");
         require(bytes(symbol).length > 0 && bytes(symbol).length <= 16, "Bad symbol");
         require(bytes(description).length <= 2_000, "Description too long");
         require(msg.value >= creationFee, "Creation fee required");
 
-        PumpRobinToken newToken = new PumpRobinToken(
+        PumpRobinToken newToken = deployer.deployToken(
             name,
             symbol,
             imageUri,
@@ -92,7 +100,22 @@ contract PumpRobinFactory {
         bondingCurve = address(curve);
 
         require(newToken.transfer(bondingCurve, newToken.totalSupply()), "Curve funding failed");
-        hook.register(curve.poolId(), bondingCurve, token, msg.sender);
+
+        // A splitter stands in as "creator" for both phases so the payout
+        // address is the same before and after graduation.
+        address creatorPayee = msg.sender;
+        if (feeRecipients.length > 0) {
+            creatorPayee = deployer.deployFeeShare(
+                token,
+                bondingCurve,
+                address(hook),
+                feeRecipients,
+                feeShareBps
+            );
+            curve.setCreatorFeeRecipient(creatorPayee);
+            tokenToFeeShare[token] = creatorPayee;
+        }
+        hook.register(curve.poolId(), bondingCurve, token, creatorPayee);
 
         allTokens.push(token);
         tokenToCurve[token] = bondingCurve;

@@ -154,7 +154,13 @@ check(
   `0x${(BigInt(hookAddress) & FLAG_MASK).toString(16)}`
 );
 
-const factory = await deploy("PumpRobinFactory", [platform.address, hookAddress]);
+const tokenDeployer = await deploy("PumpRobinDeployer");
+const factory = await deploy("PumpRobinFactory", [
+  platform.address,
+  hookAddress,
+  tokenDeployer.address,
+]);
+await send(tokenDeployer, "setFactory", [factory.address]);
 await send(hook, "setFactory", [factory.address]);
 const router = await deploy("TestSwapRouter", [POOL_MANAGER]);
 console.log("  factory", factory.address, "\n  router ", router.address);
@@ -165,22 +171,43 @@ console.log("\n== launch ==");
 const creationFee = await read(factory, "creationFee");
 
 /** Launch and return the newest token from the factory registry. */
-async function launchToken(name, symbol, antiSnipe, maxWallet, value = creationFee) {
+async function launchToken(
+  name,
+  symbol,
+  antiSnipe,
+  maxWallet,
+  { recipients = [], bps = [], value = creationFee } = {}
+) {
   await send(
     factory,
     "createToken",
-    [name, symbol, "ipfs://img", "a test launch", "ipfs://meta", antiSnipe, maxWallet],
+    [
+      name,
+      symbol,
+      "ipfs://img",
+      "a test launch",
+      "ipfs://meta",
+      antiSnipe,
+      maxWallet,
+      recipients,
+      bps,
+    ],
     creator,
     value
   );
   const n = await read(factory, "tokenCount");
   const address = await read(factory, "allTokens", [n - 1n]);
+  const feeShare = await read(factory, "tokenToFeeShare", [address]);
   return {
     token: { address, abi: artifact("PumpRobinToken").abi },
     curve: {
       address: await read(factory, "tokenToCurve", [address]),
       abi: artifact("BondingCurve").abi,
     },
+    feeShare:
+      feeShare === "0x0000000000000000000000000000000000000000"
+        ? null
+        : { address: feeShare, abi: artifact("PumpRobinFeeShare").abi },
   };
 }
 
@@ -389,6 +416,51 @@ check(
   "fee returns to 2% after 15 minutes",
   (await read(curve2, "currentFeeBps")) === 200n
 );
+
+// ---------------------------------------------------------------------------
+console.log("\n== creator fee sharing ==");
+
+const split = await launchToken("Split Test", "SPL", false, false, {
+  recipients: [creator.address, trader.address],
+  bps: [7_000, 3_000],
+});
+check("fee-share splitter deployed", split.feeShare !== null, split.feeShare?.address);
+check(
+  "curve routes the creator share to the splitter",
+  getAddress(await read(split.curve, "creatorFeeRecipient")) ===
+    getAddress(split.feeShare.address)
+);
+
+await send(split.curve, "buy", [0n], trader, parseEther("2"));
+await send(split.feeShare, "sync", [], trader);
+
+const accrued = await read(split.feeShare, "totalAccrued");
+check(
+  "splitter collected the full 1% creator fee",
+  accrued === parseEther("0.02"),
+  formatEther(accrued) + " ETH"
+);
+check(
+  "70/30 split is respected",
+  (await read(split.feeShare, "pendingOf", [creator.address])) === parseEther("0.014") &&
+    (await read(split.feeShare, "pendingOf", [trader.address])) === parseEther("0.006"),
+  "0.014 / 0.006 ETH"
+);
+
+const shareBal = await pub.getBalance({ address: trader.address });
+await send(split.feeShare, "claim", [], trader);
+check(
+  "a listed recipient can claim their share",
+  (await pub.getBalance({ address: trader.address })) > shareBal
+);
+
+let blocked = false;
+try {
+  await send(split.feeShare, "claim", [], sniper);
+} catch {
+  blocked = true;
+}
+check("a stranger cannot claim", blocked);
 
 console.log(`\n== ${ok.length} checks passed ==\n`);
 

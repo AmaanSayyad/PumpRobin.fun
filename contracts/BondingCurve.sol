@@ -66,6 +66,9 @@ contract BondingCurve is ReentrancyGuard, IUnlockCallback {
     address public immutable factory;
     address public immutable platformFeeRecipient;
 
+    /// @notice Where the creator's 1% lands — the creator, or a fee-share splitter.
+    address public creatorFeeRecipient;
+
     PoolKey public poolKey;
 
     uint256 public virtualEthReserves;
@@ -115,6 +118,7 @@ contract BondingCurve is ReentrancyGuard, IUnlockCallback {
         token = PumpRobinToken(token_);
         hook = PumpRobinHook(payable(hook_));
         creator = creator_;
+        creatorFeeRecipient = creator_;
         factory = factory_;
         platformFeeRecipient = platformFeeRecipient_;
 
@@ -290,14 +294,22 @@ contract BondingCurve is ReentrancyGuard, IUnlockCallback {
         emit PlatformFeesFlushed(platformFeeRecipient, amt);
     }
 
+    /// @notice Factory-only, once: point the creator share at a fee splitter.
+    function setCreatorFeeRecipient(address recipient) external {
+        require(msg.sender == factory, "Only factory");
+        require(creatorFeeRecipient == creator && recipient != address(0), "Already set");
+        creatorFeeRecipient = recipient;
+    }
+
     function claimCreatorFees() external nonReentrant {
-        require(msg.sender == creator, "Not creator");
+        address to = creatorFeeRecipient;
+        require(msg.sender == to, "Not creator");
         uint256 amt = pendingCreatorFees;
         require(amt > 0, "Nothing to claim");
         pendingCreatorFees = 0;
-        (bool ok, ) = creator.call{value: amt}("");
+        (bool ok, ) = to.call{value: amt}("");
         require(ok, "Creator payout failed");
-        emit CreatorFeesClaimed(creator, amt);
+        emit CreatorFeesClaimed(to, amt);
     }
 
     /// @notice Permissionless — forwards platform fees once ~$30 has accrued.
